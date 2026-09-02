@@ -13,6 +13,25 @@
   <p>Cashbook{% if request.user.role == "MANAGER" %} — {{ request.user.branch.name }}{% endif %} — generated {% now "d M Y, H:i" %}</p>
 </div>
 
+{% if opening_balances %}
+<div class="card no-print" style="margin-bottom:1rem">
+  <h3>Today's Opening Balances</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Location</th><th>Amount</th><th>Recorded by</th><th>At</th></tr>
+    {% for ob in opening_balances %}
+    <tr>
+      <td>{{ ob.location.branch.name }} — {{ ob.location.get_type_display }}{% if ob.location.rep %} ({{ ob.location.rep.username }}){% endif %}</td>
+      <td>UGX {{ ob.amount|floatformat:0 }}</td>
+      <td>{{ ob.recorded_by.username|default:"—" }}</td>
+      <td>{{ ob.created_at|date:"H:i" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="table-scroll">
 <table class="list">
   <tr><th>Date</th><th>Type</th><th>Reference</th><th>Method</th><th>By</th><th>Amount</th><th>Running Balance</th></tr>

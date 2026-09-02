@@ -75,7 +75,7 @@ TEMPLATES = [{
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-DB_ENGINE = os.environ.get("DB_ENGINE", "sqlite")
+DB_ENGINE = os.environ.get("DB_ENGINE", "sqlite" if DEBUG else "postgres")
 if DB_ENGINE == "postgres":
     DATABASES = {"default": {
         "ENGINE": "django.db.backends.postgresql",

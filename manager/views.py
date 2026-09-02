@@ -12,6 +12,7 @@ from production.models import Distribution, Product
 from sales.models import Debtor, DebtorPayment, InventoryLocation, PendingAction, StockItem, StockMovement
 
 manager_required = user_passes_test(lambda u: u.is_authenticated and u.role == "MANAGER")
+manager_or_owner_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("MANAGER", "OWNER"))
 
 
 def _outlet(request):
@@ -114,7 +115,28 @@ def inventory(request):
         context.update({
             "items": items,
             "stock_value": sum((i.value for i in items), 0),
-            "movements": StockMovement.objects.filter(location=location).select_related("product")
-                                              .order_by("-created_at")[:30],
         })
     return render(request, "manager/inventory.html", context)
+
+
+@login_required
+@manager_or_owner_required
+def stock_movements(request):
+    """Every unit that moved, in or out — sale, distribution, batch landing —
+    with who moved it and, for distributions, who the other side was.
+    Branch-locked for a manager, business-wide for the owner."""
+    biz = request.user.business
+    qs = StockMovement.objects.filter(location__business=biz).select_related(
+        "product", "location__branch", "location__rep",
+        "counterparty__branch", "counterparty__rep", "moved_by",
+    ).order_by("-created_at")
+    if request.user.role == "MANAGER":
+        qs = qs.filter(location__branch=request.user.branch)
+
+    page_obj = Paginator(qs, 25).get_page(request.GET.get("page"))
+    for m in page_obj:
+        if m.counterparty:
+            m.flow_label = f"Sent to {m.counterparty}" if m.quantity < 0 else f"Received from {m.counterparty}"
+        else:
+            m.flow_label = None
+    return render(request, "manager/stock_movements.html", {"page_obj": page_obj})

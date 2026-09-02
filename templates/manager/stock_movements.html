@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Stock Movements{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>Stock Movements{% if request.user.role == "MANAGER" %} — {{ request.user.branch.name }}{% endif %}</h2>
+  <span class="spacer"></span>
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+<div class="print-only print-masthead">
+  <h1>{{ request.user.business.name }}</h1>
+  <p>Stock Movements — generated {% now "d M Y, H:i" %}</p>
+</div>
+
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Date</th><th>Location</th><th>Product</th><th>Change</th><th>Reason</th><th>To / From</th><th>By</th><th>Reference</th></tr>
+  {% for m in page_obj %}
+  <tr>
+    <td>{{ m.created_at|date:"d M Y, H:i" }}</td>
+    <td>{{ m.location }}</td>
+    <td>{{ m.product.name }}</td>
+    <td style="color:{% if m.quantity < 0 %}var(--red){% else %}var(--green){% endif %};font-weight:700">
+      {% if m.quantity > 0 %}+{% endif %}{{ m.quantity }}
+    </td>
+    <td>{{ m.get_reason_display }}</td>
+    <td>{{ m.flow_label|default:"—" }}</td>
+    <td>{{ m.moved_by.username|default:"—" }}</td>
+    <td style="color:var(--muted)">{{ m.reference|default:"—" }}</td>
+  </tr>
+  {% empty %}<tr><td colspan="8" style="color:var(--muted)">No stock movements recorded yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% include "partials/pagination.html" %}
+{% endblock %}

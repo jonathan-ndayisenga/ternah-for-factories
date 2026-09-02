@@ -23,7 +23,7 @@ def _paginate(request, items, page_size=PAGE_SIZE):
     return page_obj, qd.urlencode()
 
 from production.models import Distribution
-from sales.models import BankAccount, DebtorPayment, Expense, MomoAccount, PendingAction, Sale, SaleItem
+from sales.models import BankAccount, DailyOpeningBalance, DebtorPayment, Expense, MomoAccount, PendingAction, Sale, SaleItem
 from .models import JournalEntry, JournalLine, LedgerAccount
 from .services import get_accounts, post_capital_transaction
 
@@ -85,6 +85,10 @@ def cashbook(request):
     branch_filter = {"location__branch": request.user.branch} if request.user.role == "MANAGER" else {}
     debtor_branch_filter = {"debtor__location__branch": request.user.branch} if request.user.role == "MANAGER" else {}
 
+    opening_balances = DailyOpeningBalance.objects.filter(
+        business=biz, date=timezone.localdate(), **branch_filter
+    ).select_related("location__branch", "recorded_by")
+
     entries = []
     for s in Sale.objects.filter(business=biz, amount_paid__gt=0, **branch_filter).select_related("location", "served_by"):
         entries.append({"sort_date": s.created_at.date(), "when": s.created_at, "type": "Sale",
@@ -108,6 +112,7 @@ def cashbook(request):
     page_obj, extra_qs = _paginate(request, entries)
     return render(request, "finance/cashbook.html", {
         "page_obj": page_obj, "extra_qs": extra_qs, "closing_balance": closing_balance,
+        "opening_balances": opening_balances,
     })
 
 
@@ -141,16 +146,19 @@ def journal(request):
             "description": f"{p.debtor.name} paid down their balance", "amount": p.amount, "by": p.received_by,
         })
 
-    dist_qs = Distribution.objects.filter(business=biz, status="RECEIVED").select_related("created_by") \
+    dist_qs = Distribution.objects.filter(business=biz, status="RECEIVED") \
+        .select_related("created_by", "confirmed_by", "receiver_location__branch", "receiver_location__rep") \
         .prefetch_related("lines__product")
     if branch:
         dist_qs = dist_qs.filter(receiver_location__branch=branch)
     for d in dist_qs:
         items = ", ".join(f"{l.product.name} ×{l.quantity}" for l in d.lines.all())
+        sent_by = d.created_by.username if d.created_by else "—"
         entries.append({
             "sort_date": d.updated_at.date(), "when": d.updated_at, "type": "Stock Received",
-            "description": f"{d.delivery_note_number}: {items}" if items else d.delivery_note_number,
-            "amount": None, "by": d.created_by,
+            "description": (f"{d.delivery_note_number}: {items} — sent by {sent_by} to {d.receiver_location}"
+                            if items else f"{d.delivery_note_number} — sent by {sent_by} to {d.receiver_location}"),
+            "amount": None, "by": d.confirmed_by,
         })
 
     actions_qs = PendingAction.objects.filter(business=biz).exclude(status="PENDING") \

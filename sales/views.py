@@ -13,7 +13,7 @@ from accounts.models import PRICE_TIERS
 from finance.services import post_debtor_payment, post_expense, post_sale
 from production.models import Distribution, DistributionLine
 from .models import (
-    BankAccount, Debtor, DebtorPayment, Expense, InventoryLocation,
+    BankAccount, DailyOpeningBalance, Debtor, DebtorPayment, Expense, InventoryLocation,
     MomoAccount, Sale, SaleItem, StockItem, StockMovement,
 )
 
@@ -65,6 +65,8 @@ def pos(request):
     }
     if location:
         today = timezone.localdate()
+        opening_balance = DailyOpeningBalance.objects.filter(location=location, date=today).select_related("recorded_by").first()
+        context["opening_balance"] = opening_balance
         today_sales = Sale.objects.filter(location=location, created_at__date=today).order_by("-created_at")
         debtors = [d for d in Debtor.objects.filter(location=location) if d.balance() > 0]
         stock_items = StockItem.objects.filter(location=location, quantity__gt=0).select_related("product")
@@ -197,7 +199,7 @@ def record_sale(request):
         item.quantity -= qty
         item.save(update_fields=["quantity"])
         StockMovement.objects.create(location=location, product=item.product, quantity=-qty,
-                                     reason="SALE", reference=receipt)
+                                     reason="SALE", reference=receipt, moved_by=request.user)
     post_sale(sale)
     return redirect("sales:pos")
 
@@ -218,6 +220,26 @@ def record_expense(request):
                 amount=amount, note=request.POST.get("note", "").strip(),
                 date=timezone.localdate(), recorded_by=request.user)
             post_expense(expense)
+    return redirect("sales:pos")
+
+
+@login_required
+@pos_required
+def record_opening_balance(request):
+    """Whoever opens up today counts the till and records it here — one per
+    location per day, editable (not locked) in case of a miscount or a
+    manager correcting it later."""
+    location = _pos_location(request)
+    if request.method == "POST" and location:
+        try:
+            amount = Decimal(request.POST.get("amount", ""))
+        except InvalidOperation:
+            amount = None
+        if amount is not None and amount >= 0:
+            DailyOpeningBalance.objects.update_or_create(
+                location=location, date=timezone.localdate(),
+                defaults={"business": request.user.business, "amount": amount, "recorded_by": request.user},
+            )
     return redirect("sales:pos")
 
 

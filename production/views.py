@@ -149,6 +149,9 @@ def distribution_create(request):
             DistributionLine.objects.create(distribution=dist, product=product, quantity=qty)
             store_item.quantity -= qty
             store_item.save(update_fields=["quantity"])
+            StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,
+                                         reason="DISTRIBUTION", reference=dist.delivery_note_number,
+                                         moved_by=request.user, counterparty=receiver)
         return redirect("production:distributions")
 
     return render(request, "production/distribution_create.html", {
@@ -159,7 +162,8 @@ def distribution_create(request):
 @distribution_staff_required
 def distribution_list(request):
     biz = request.user.business
-    distributions = Distribution.objects.filter(business=biz).select_related("receiver_location__branch") \
+    distributions = Distribution.objects.filter(business=biz) \
+        .select_related("receiver_location__branch", "receiver_location__rep", "created_by", "confirmed_by") \
         .prefetch_related("lines__product").order_by("-date", "-id")
     return render(request, "production/distributions.html", {"distributions": distributions})
 
@@ -178,6 +182,7 @@ def distribution_confirm(request, pk):
     dist = get_object_or_404(Distribution, pk=pk, business=biz, status="SENT")
     action = request.POST.get("action")
     if action == "confirm":
+        factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
         for line in dist.lines.select_related("product"):
             item, _ = StockItem.objects.get_or_create(
                 location=dist.receiver_location, product=line.product,
@@ -185,8 +190,12 @@ def distribution_confirm(request, pk):
             )
             item.quantity += line.quantity
             item.save(update_fields=["quantity"])
+            StockMovement.objects.create(location=dist.receiver_location, product=line.product, quantity=line.quantity,
+                                         reason="DISTRIBUTION", reference=dist.delivery_note_number,
+                                         moved_by=request.user, counterparty=factory_store)
         dist.status = "RECEIVED"
-        dist.save(update_fields=["status"])
+        dist.confirmed_by = request.user
+        dist.save(update_fields=["status", "confirmed_by"])
     elif action == "dispute":
         dist.status = "DISPUTED"
         dist.save(update_fields=["status"])
@@ -490,7 +499,7 @@ def batch_complete(request, pk):
             item.buying_price = batch.unit_cost_at_production
             item.save(update_fields=["quantity", "buying_price"])
             StockMovement.objects.create(location=factory_store, product=batch.product, quantity=actual,
-                                         reason="DISTRIBUTION", reference=batch.batch_number)
+                                         reason="DISTRIBUTION", reference=batch.batch_number, moved_by=request.user)
         post_batch_completion(batch)
         return redirect("reports:production_batch_detail", pk=batch.pk)
 
@@ -542,6 +551,9 @@ def stock_request_fulfill(request, pk):
             DistributionLine.objects.create(distribution=dist, product=product, quantity=qty)
             store_item.quantity -= qty
             store_item.save(update_fields=["quantity"])
+            StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,
+                                         reason="DISTRIBUTION", reference=dist.delivery_note_number,
+                                         moved_by=request.user, counterparty=stock_request.requester_location)
         stock_request.status = "FULFILLED"
         stock_request.save(update_fields=["status"])
     return redirect("production:stock_requests")

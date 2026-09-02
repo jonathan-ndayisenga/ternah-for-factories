@@ -162,6 +162,8 @@ class Distribution(TimeStamped):
     date = models.DateField()
     status = models.CharField(max_length=10, choices=STATUS, default="SENT")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name="distributions_confirmed")
 
 
 class DistributionLine(models.Model):

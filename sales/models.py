@@ -41,6 +41,9 @@ class StockMovement(TimeStamped):
     quantity = models.IntegerField()                 # signed
     reason = models.CharField(max_length=15, choices=REASONS)
     reference = models.CharField(max_length=60, blank=True)
+    moved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    counterparty = models.ForeignKey(InventoryLocation, null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name="counterparty_movements")   # the other side of the move, if any
 
 
 class MomoAccount(TimeStamped):
@@ -56,6 +59,22 @@ class BankAccount(TimeStamped):
     account_name = models.CharField(max_length=120)
     account_number = models.CharField(max_length=40)
     is_active = models.BooleanField(default=True)
+
+
+class DailyOpeningBalance(TimeStamped):
+    """What was physically counted in the till at the start of the day, per
+    location — set by whoever opens up (cashier/rep), editable by a manager.
+    Purely a reconciliation record: the cashbook's running balance is always
+    computed from actual transactions, this is what gets compared against it
+    to catch shrinkage, miscounts, or an unrecorded cash movement."""
+    business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
+    location = models.ForeignKey(InventoryLocation, on_delete=models.CASCADE, related_name="opening_balances")
+    date = models.DateField()
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        unique_together = [("location", "date")]
 
 
 class Debtor(TimeStamped):

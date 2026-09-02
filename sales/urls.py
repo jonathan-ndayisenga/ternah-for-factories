@@ -7,5 +7,6 @@ urlpatterns = [
     path("pos/received/", views.received_items, name="received_items"),
     path("pos/sale/", views.record_sale, name="record_sale"),
     path("pos/expense/", views.record_expense, name="record_expense"),
+    path("pos/opening-balance/", views.record_opening_balance, name="record_opening_balance"),
     path("pos/payment/", views.record_payment, name="record_payment"),
 ]

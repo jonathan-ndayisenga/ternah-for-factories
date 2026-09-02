@@ -8,11 +8,12 @@
 </div>
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Delivery Note</th><th>Date</th><th>Sent To</th><th>Items</th><th>Status</th><th></th></tr>
+  <tr><th>Delivery Note</th><th>Date</th><th>Sent By</th><th>Sent To</th><th>Items</th><th>Status</th><th>Received By</th><th></th></tr>
   {% for d in distributions %}
   <tr>
     <td>{{ d.delivery_note_number }}</td>
     <td>{{ d.date|date:"d M Y" }}</td>
+    <td>{{ d.created_by.username|default:"—" }}</td>
     <td>{{ d.receiver_location.branch.name }} — {{ d.receiver_location.rep.username|default:d.receiver_location.get_type_display }}</td>
     <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
     <td>
@@ -20,6 +21,7 @@
       {% elif d.status == "DISPUTED" %}<span class="pill locked">Disputed</span>
       {% else %}<span class="pill warning">Sent</span>{% endif %}
     </td>
+    <td>{{ d.confirmed_by.username|default:"—" }}</td>
     <td>
       {% if d.status == "SENT" %}
       <form method="post" action="{% url 'production:distribution_confirm' d.pk %}" style="display:inline-flex;gap:.4rem">
@@ -30,7 +32,7 @@
       {% endif %}
     </td>
   </tr>
-  {% empty %}<tr><td colspan="6" style="color:var(--muted)">No distributions yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="8" style="color:var(--muted)">No distributions yet.</td></tr>{% endfor %}
 </table>
 </div>
 {% endblock %}

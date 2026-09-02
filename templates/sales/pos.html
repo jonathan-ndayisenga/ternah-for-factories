@@ -60,6 +60,36 @@
 
 <div class="pos-layout">
   <div class="pos-side">
+    <div class="card" style="padding:.9rem 1.1rem">
+      {% if opening_balance %}
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem">
+          <div>
+            <span class="stat-label" style="display:block">Today's Opening Balance</span>
+            <strong style="font-size:1.1rem;color:var(--ternah-navy)">UGX {{ opening_balance.amount|floatformat:0 }}</strong>
+            <span style="color:var(--muted);font-size:.78rem;display:block">by {{ opening_balance.recorded_by.username|default:"—" }} at {{ opening_balance.created_at|date:"H:i" }}</span>
+          </div>
+          <label for="editOpening" class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);cursor:pointer;flex-shrink:0">Edit</label>
+        </div>
+        <input type="checkbox" id="editOpening" class="stat-toggle">
+        <div class="expense-panel">
+          <form method="post" action="{% url 'sales:record_opening_balance' %}" class="stack" style="margin-top:.8rem">
+            {% csrf_token %}
+            <label>Corrected amount (UGX)</label>
+            <input name="amount" type="number" min="0" step="1" value="{{ opening_balance.amount|floatformat:0 }}" required>
+            <button class="btn" style="margin-top:.6rem;width:100%">Update</button>
+          </form>
+        </div>
+      {% else %}
+        <strong style="display:block;margin-bottom:.4rem;color:var(--ternah-navy)">Set today's opening balance</strong>
+        <p style="color:var(--muted);font-size:.85rem;margin-bottom:.6rem">Count the cash in the till before your first sale.</p>
+        <form method="post" action="{% url 'sales:record_opening_balance' %}" style="display:flex;gap:.5rem">
+          {% csrf_token %}
+          <input name="amount" type="number" min="0" step="1" placeholder="Amount (UGX)" required style="flex:1;padding:.6rem .7rem;border:1px solid #D7DEE6;border-radius:9px">
+          <button class="btn">Set</button>
+        </form>
+      {% endif %}
+    </div>
+
     <input type="checkbox" id="statSales" class="stat-toggle" {% if open_panel == "sales" %}checked{% endif %}>
     <label for="statSales" class="stat-card">
       <span class="stat-label">Today's Sales <svg class="stat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
