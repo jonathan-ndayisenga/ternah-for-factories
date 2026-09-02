@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Items Received{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Items Received</h2>
+</div>
+
+{% if not location %}
+<div class="card"><p style="color:var(--muted)">No inventory location is set up for you yet.</p></div>
+{% else %}
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Date</th><th>Product</th><th>Quantity</th><th>Delivery Note</th><th>Your selling price</th></tr>
+  {% for line in lines %}
+  <tr>
+    <td>{{ line.distribution.date|date:"d M Y" }}</td>
+    <td>{{ line.product.name }}</td>
+    <td>{{ line.quantity }}</td>
+    <td>{{ line.distribution.delivery_note_number }}</td>
+    <td>
+      {% for label, price in line.your_prices %}
+        <span class="pill active">{{ label }}: UGX {{ price|floatformat:0 }}</span>
+      {% empty %}<span style="color:var(--muted)">Not priced yet</span>{% endfor %}
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="5" style="color:var(--muted)">Nothing received yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% endif %}
+{% endblock %}

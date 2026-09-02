@@ -1,51 +1,200 @@
 {% extends "base.html" %}
 {% block title %}Point of Sale{% endblock %}
 {% block content %}
+<style>
+  .pos-layout { display: grid; grid-template-columns: minmax(280px, 340px) 1fr; gap: 1rem; align-items: start; }
+  @media (max-width: 900px) { .pos-layout { grid-template-columns: 1fr; } }
+
+  .stat-toggle { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+  .stat-card { display: block; cursor: pointer; background: var(--card); border-radius: 14px;
+               padding: 1.1rem 1.25rem; box-shadow: var(--shadow-sm); border: 1.5px solid transparent;
+               transition: border-color .15s, box-shadow .15s; }
+  .stat-card:hover { box-shadow: var(--shadow-md); }
+  .stat-toggle:checked + .stat-card { border-color: var(--ternah-blue); }
+  .stat-card .stat-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .5px;
+                            color: var(--muted); font-weight: 700; display: flex; align-items: center;
+                            justify-content: space-between; }
+  .stat-card .stat-value { font-size: 1.6rem; font-weight: 800; color: var(--ternah-navy); margin-top: .3rem; }
+  .stat-card .stat-sub { font-size: .8rem; color: var(--muted); margin-top: .15rem; }
+  .stat-chevron { transition: transform .15s; color: var(--muted); }
+  .stat-toggle:checked + .stat-card .stat-chevron { transform: rotate(90deg); }
+  .stat-panel { max-height: 0; overflow: hidden; transition: max-height .2s ease; }
+  .stat-toggle:checked ~ .stat-panel { max-height: 900px; }
+  .stat-panel-inner { background: var(--card); border-radius: 14px; box-shadow: var(--shadow-sm);
+                       margin-top: .6rem; padding: .9rem 1rem; }
+
+  .pos-side { display: flex; flex-direction: column; gap: .9rem; min-width: 0; }
+  .expense-toggle-label { font-size: .85rem; font-weight: 600; color: var(--ternah-blue); cursor: pointer;
+                           display: inline-block; padding: .3rem 0; }
+  .expense-panel { max-height: 0; overflow: hidden; transition: max-height .2s ease; }
+  .stat-toggle:checked ~ .expense-panel { max-height: 400px; }
+
+  .cart-card { background: var(--card); border-radius: 16px; box-shadow: var(--shadow-md); padding: 1.4rem; min-width: 0; }
+  .cart-card h3 { font-size: 1.05rem; color: var(--ternah-navy); margin-bottom: .9rem; }
+  .cart-line { display: grid; grid-template-columns: 1fr 130px 70px 34px; gap: .5rem; margin-bottom: .55rem;
+               align-items: center; }
+  .cart-line select, .cart-line input { padding: .55rem .6rem; border: 1px solid #D7DEE6; border-radius: 9px;
+                                          font-family: inherit; font-size: .9rem; min-width: 0; }
+  .cart-line .row-remove { padding: .5rem; min-height: auto; border-radius: 9px; }
+  .custom-price-line { grid-column: 1 / -1; margin: -.25rem 0 .3rem; display: none; }
+  .custom-price-line.show { display: block; }
+  .custom-price-line input { width: 100%; }
+  .custom-price-hint { font-size: .75rem; color: var(--muted); margin-top: .2rem; }
+  @media (max-width: 560px) { .cart-line { grid-template-columns: 1fr 1fr; } .cart-line .row-remove { grid-column: 2; justify-self: end; } }
+
+  .cart-total-bar { display: flex; justify-content: space-between; align-items: baseline;
+                     background: var(--bg); border-radius: 10px; padding: .8rem 1rem; margin: 1rem 0; }
+  .cart-total-bar .label { font-size: .8rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+  .cart-total-bar .amount { font-size: 1.4rem; font-weight: 800; color: var(--ternah-navy); }
+
+  .account-hint { font-size: .8rem; color: var(--amber); margin-top: .3rem; }
+</style>
+
 <div class="page-head">
   <h2>{% if location %}{{ location.branch.name }}{% else %}Point of Sale{% endif %}</h2>
-  <span class="spacer"></span>
-  {% if location %}<span class="pill active">Today: UGX {{ today_total|floatformat:0 }} · {{ today_sales|length }} sale{{ today_sales|length|pluralize }}</span>{% endif %}
 </div>
 
 {% if not location %}
 <div class="card"><p style="color:var(--muted)">No inventory location is set up for you yet — ask your owner or manager to get one connected to your branch.</p></div>
 {% else %}
 
-<div class="grid charts-2">
-  <div class="card">
+<div class="pos-layout">
+  <div class="pos-side">
+    <input type="checkbox" id="statSales" class="stat-toggle" {% if open_panel == "sales" %}checked{% endif %}>
+    <label for="statSales" class="stat-card">
+      <span class="stat-label">Today's Sales <svg class="stat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+      <div class="stat-value">UGX {{ today_total|floatformat:0 }}</div>
+      <div class="stat-sub">{{ sales_page_obj.paginator.count }} receipt{{ sales_page_obj.paginator.count|pluralize }} today</div>
+    </label>
+    <div class="stat-panel" id="statSalesPanel">
+      <div class="stat-panel-inner">
+        <div class="table-scroll">
+        <table class="list">
+          <tr><th>Time</th><th>Receipt</th><th>Customer</th><th>Method</th><th>Total</th></tr>
+          {% for s in sales_page_obj %}
+          <tr>
+            <td>{{ s.created_at|date:"H:i" }}</td>
+            <td>{{ s.receipt_number }}</td>
+            <td>{{ s.customer_name|default:"—" }}</td>
+            <td>{{ s.get_payment_method_display }}</td>
+            <td>UGX {{ s.total|floatformat:0 }}</td>
+          </tr>
+          {% empty %}<tr><td colspan="5" style="color:var(--muted)">No sales yet today.</td></tr>{% endfor %}
+        </table>
+        </div>
+        {% include "partials/pagination.html" with page_obj=sales_page_obj page_param="sales_page" extra_qs=sales_extra_qs anchor="statSalesPanel" %}
+      </div>
+    </div>
+
+    <input type="checkbox" id="statDebtors" class="stat-toggle" {% if open_panel == "debtors" %}checked{% endif %}>
+    <label for="statDebtors" class="stat-card">
+      <span class="stat-label">Debtors <svg class="stat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+      <div class="stat-value">UGX {{ debtor_total|floatformat:0 }}</div>
+      <div class="stat-sub">{{ debtors_page_obj.paginator.count }} outstanding</div>
+    </label>
+    <div class="stat-panel" id="statDebtorsPanel">
+      <div class="stat-panel-inner">
+        {% if debtors_page_obj.paginator.count %}
+        <div class="table-scroll">
+        <table class="list">
+          <tr><th>Name</th><th>Balance</th><th>Record payment</th></tr>
+          {% for d in debtors_page_obj %}
+          <tr>
+            <td>{{ d.name }}{% if d.phone %}<br><span style="color:var(--muted);font-size:.8rem">{{ d.phone }}</span>{% endif %}</td>
+            <td>UGX {{ d.balance|floatformat:0 }}</td>
+            <td>
+              <form method="post" action="{% url 'sales:record_payment' %}" style="display:flex;gap:.4rem">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'sales:pos' %}">
+                <input type="hidden" name="debtor_id" value="{{ d.id }}">
+                <input name="amount" type="number" min="1" style="width:100px;padding:.4rem .6rem;border:1px solid #D7DEE6;border-radius:8px" required>
+                <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">Pay</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+        </div>
+        {% include "partials/pagination.html" with page_obj=debtors_page_obj page_param="debtors_page" extra_qs=debtors_extra_qs anchor="statDebtorsPanel" %}
+        {% else %}
+          <p style="color:var(--muted);font-size:.9rem">No outstanding debtors.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div>
+      <input type="checkbox" id="statExpense" class="stat-toggle" style="display:none">
+      <label for="statExpense" class="expense-toggle-label">+ Record an expense</label>
+      <div class="expense-panel">
+        <div class="stat-panel-inner">
+          <form method="post" action="{% url 'sales:record_expense' %}" class="stack">
+            {% csrf_token %}
+            <label>Category</label>
+            <input name="category" required placeholder="e.g. Transport, Airtime">
+            <label>Amount (UGX)</label>
+            <input name="amount" type="number" min="1" required>
+            <label>Note <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+            <input name="note">
+            <button class="btn" style="margin-top:.8rem">Record expense</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cart-card">
     <h3>New Sale</h3>
-    <form method="post" action="{% url 'sales:record_sale' %}" class="stack">
+    <form method="post" action="{% url 'sales:record_sale' %}" id="saleForm" class="stack">
       {% csrf_token %}
       {{ tier_labels|json_script:"tierLabels" }}
+      {{ product_data|json_script:"productData" }}
       <div id="cartRows">
-        <div class="cart-row">
-          <select name="product" class="cart-product" required onchange="syncTierOptions(this)">
+        <div class="cart-line">
+          <select name="product" class="cart-product" required onchange="onProductChange(this)">
             <option value="">Select product…</option>
             {% for item in stock_items %}
               <option value="{{ item.product_id }}" data-tiers="{{ item.available_tiers|join:',' }}">{{ item.product.name }} ({{ item.quantity }} in stock)</option>
             {% endfor %}
           </select>
-          <select name="tier" class="cart-tier" required></select>
-          <input type="number" name="quantity" min="1" value="1" required>
+          <select name="tier" class="cart-tier" required onchange="onTierChange(this)"></select>
+          <input type="number" name="quantity" min="1" value="1" required oninput="updateCartTotal()">
           <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
+          <div class="custom-price-line">
+            <input type="number" name="custom_price" step="0.01" placeholder="Type the agreed price" oninput="updateCartTotal()">
+            <div class="custom-price-hint"></div>
+          </div>
         </div>
       </div>
-      <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addCartRow()">+ Add item</button>
+      <button type="button" class="btn ghost" style="margin-top:.2rem" onclick="addCartRow()">+ Add item</button>
+
+      <div class="cart-total-bar">
+        <span class="label">Total</span>
+        <span class="amount" id="cartTotalDisplay">UGX 0</span>
+      </div>
 
       <label>Payment method</label>
-      <select name="payment_method" id="paymentMethod" required onchange="toggleCustomerRequired(); toggleMomoAccount();">
+      <select name="payment_method" id="paymentMethod" required onchange="toggleCustomerRequired(); toggleAccountFields();">
         <option value="CASH">Cash</option>
-        <option value="MOBILE_MONEY">Mobile Money</option>
-        <option value="CARD">Card</option>
+        <option value="MOBILE_MONEY" {% if not momo_accounts %}disabled{% endif %}>Mobile Money{% if not momo_accounts %} (no account set up){% endif %}</option>
+        <option value="CARD" {% if not bank_accounts %}disabled{% endif %}>Card{% if not bank_accounts %} (no account set up){% endif %}</option>
         <option value="CREDIT">Credit</option>
       </select>
 
       <div id="momoAccountField" style="display:none">
-        <label>Into which MoMo account?</label>
+        <label>Into which Mobile Money account?</label>
         <select name="momo_account" id="momoAccount">
           {% for a in momo_accounts %}<option value="{{ a.id }}">{{ a.provider }} — {{ a.number }}</option>{% endfor %}
         </select>
       </div>
+      {% if not momo_accounts %}<p class="account-hint" id="momoHint" style="display:none">No Mobile Money account is set up yet — ask your manager to add one in Payment Accounts.</p>{% endif %}
+
+      <div id="bankAccountField" style="display:none">
+        <label>Into which bank account?</label>
+        <select name="bank_account" id="bankAccount">
+          {% for a in bank_accounts %}<option value="{{ a.id }}">{{ a.bank_name }} — {{ a.account_name }}</option>{% endfor %}
+        </select>
+      </div>
+      {% if not bank_accounts %}<p class="account-hint" id="bankHint" style="display:none">No bank account is set up yet — ask your manager to add one in Payment Accounts.</p>{% endif %}
 
       <label>Customer name <span id="customerHint" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
       <input name="customer_name" id="customerName" placeholder="Who are you selling to?">
@@ -55,101 +204,104 @@
       <button class="btn" style="margin-top:1rem;width:100%" type="submit">Record sale</button>
     </form>
   </div>
-
-  <div class="card">
-    <h3>Today's Sales</h3>
-    <div class="table-scroll">
-    <table class="list">
-      <tr><th>Time</th><th>Customer</th><th>Method</th><th>Total</th></tr>
-      {% for s in today_sales %}
-      <tr>
-        <td>{{ s.created_at|date:"H:i" }}</td>
-        <td>{{ s.customer_name|default:"—" }}</td>
-        <td>{{ s.get_payment_method_display }}</td>
-        <td>UGX {{ s.total|floatformat:0 }}</td>
-      </tr>
-      {% empty %}<tr><td colspan="4" style="color:var(--muted)">No sales yet today.</td></tr>{% endfor %}
-    </table>
-    </div>
-  </div>
-</div>
-
-<div class="grid charts-2" style="margin-top:1rem">
-  <div class="card">
-    <h3>Record an Expense</h3>
-    <form method="post" action="{% url 'sales:record_expense' %}" class="stack">
-      {% csrf_token %}
-      <label>Category</label>
-      <input name="category" required placeholder="e.g. Transport, Airtime">
-      <label>Amount (UGX)</label>
-      <input name="amount" type="number" min="1" required>
-      <label>Note <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-      <input name="note">
-      <button class="btn" style="margin-top:1rem">Record expense</button>
-    </form>
-  </div>
-
-  <div class="card">
-    <h3>Debtors — money owed to you</h3>
-    {% if debtors %}
-    <div class="table-scroll">
-    <table class="list">
-      <tr><th>Name</th><th>Balance</th><th>Record payment</th></tr>
-      {% for d in debtors %}
-      <tr>
-        <td>{{ d.name }}{% if d.phone %}<br><span style="color:var(--muted);font-size:.8rem">{{ d.phone }}</span>{% endif %}</td>
-        <td>UGX {{ d.balance|floatformat:0 }}</td>
-        <td>
-          <form method="post" action="{% url 'sales:record_payment' %}" style="display:flex;gap:.4rem">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{% url 'sales:pos' %}">
-            <input type="hidden" name="debtor_id" value="{{ d.id }}">
-            <input name="amount" type="number" min="1" style="width:100px;padding:.4rem .6rem;border:1px solid #D7DEE6;border-radius:8px" required>
-            <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">Pay</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </table>
-    </div>
-    {% else %}
-      <p style="color:var(--muted);font-size:.9rem">No outstanding debtors.</p>
-    {% endif %}
-  </div>
 </div>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
+function getProductData() { return JSON.parse(document.getElementById("productData").textContent); }
+function getTierLabels() { return JSON.parse(document.getElementById("tierLabels").textContent); }
+
+function onProductChange(productSelect) {
+  syncTierOptions(productSelect);
+}
 function syncTierOptions(productSelect) {
-  const row = productSelect.closest(".cart-row");
+  const row = productSelect.closest(".cart-line");
   const tierSelect = row.querySelector(".cart-tier");
-  const labels = JSON.parse(document.getElementById("tierLabels").textContent);
+  const labels = getTierLabels();
   const opt = productSelect.selectedOptions[0];
   const tiers = opt && opt.dataset.tiers ? opt.dataset.tiers.split(",").filter(Boolean) : [];
   tierSelect.innerHTML = tiers.map(t => `<option value="${t}">${labels[t] || t}</option>`).join("");
+  onTierChange(tierSelect);
+}
+function onTierChange(tierSelect) {
+  const row = tierSelect.closest(".cart-line");
+  const productSelect = row.querySelector(".cart-product");
+  const customLine = row.querySelector(".custom-price-line");
+  const customInput = customLine.querySelector("input");
+  const hint = customLine.querySelector(".custom-price-hint");
+  if (tierSelect.value === "CUSTOM") {
+    const data = getProductData()[productSelect.value];
+    customLine.classList.add("show");
+    customInput.required = true;
+    if (data) {
+      customInput.min = data.custom_min;
+      customInput.max = data.custom_max;
+      hint.textContent = `Must be between UGX ${data.custom_min} and UGX ${data.custom_max}`;
+    }
+  } else {
+    customLine.classList.remove("show");
+    customInput.required = false;
+    customInput.value = "";
+  }
+  updateCartTotal();
 }
 function addCartRow() {
   const rows = document.getElementById("cartRows");
   const row = rows.firstElementChild.cloneNode(true);
   row.querySelector(".cart-product").selectedIndex = 0;
   row.querySelector(".cart-tier").innerHTML = "";
-  row.querySelector("input[type=number]").value = "1";
+  row.querySelector("input[type=number][name=quantity]").value = "1";
+  const customLine = row.querySelector(".custom-price-line");
+  customLine.classList.remove("show");
+  customLine.querySelector("input").value = "";
+  customLine.querySelector("input").required = false;
   rows.appendChild(row);
+  updateCartTotal();
 }
 function removeCartRow(btn) {
   const rows = document.getElementById("cartRows");
-  if (rows.children.length > 1) btn.closest(".cart-row").remove();
+  const line = btn.closest(".cart-line");
+  if (rows.children.length > 1) line.remove();
+  updateCartTotal();
+}
+function updateCartTotal() {
+  const data = getProductData();
+  let total = 0;
+  document.querySelectorAll("#cartRows .cart-line").forEach(line => {
+    const productSelect = line.querySelector(".cart-product");
+    const tierSelect = line.querySelector(".cart-tier");
+    const qty = parseFloat(line.querySelector("input[name=quantity]").value) || 0;
+    const pd = data[productSelect.value];
+    if (!pd || !tierSelect.value || !qty) return;
+    let price = 0;
+    if (tierSelect.value === "CUSTOM") {
+      price = parseFloat(line.querySelector(".custom-price-line input").value) || 0;
+    } else {
+      price = pd.prices[tierSelect.value] || 0;
+    }
+    total += price * qty;
+  });
+  document.getElementById("cartTotalDisplay").textContent = "UGX " + total.toLocaleString(undefined, {maximumFractionDigits: 0});
 }
 function toggleCustomerRequired() {
   const isCredit = document.getElementById("paymentMethod").value === "CREDIT";
   document.getElementById("customerName").required = isCredit;
   document.getElementById("customerHint").textContent = isCredit ? "(needed to track the debt)" : "(optional)";
 }
-function toggleMomoAccount() {
-  const isMomo = document.getElementById("paymentMethod").value === "MOBILE_MONEY";
-  document.getElementById("momoAccountField").style.display = isMomo ? "block" : "none";
+function toggleAccountFields() {
+  const method = document.getElementById("paymentMethod").value;
+  document.getElementById("momoAccountField").style.display = method === "MOBILE_MONEY" ? "block" : "none";
+  document.getElementById("bankAccountField").style.display = method === "CARD" ? "block" : "none";
+  const momoHint = document.getElementById("momoHint");
+  if (momoHint) momoHint.style.display = method === "MOBILE_MONEY" ? "block" : "none";
+  const bankHint = document.getElementById("bankHint");
+  if (bankHint) bankHint.style.display = method === "CARD" ? "block" : "none";
 }
+document.addEventListener("DOMContentLoaded", function () {
+  toggleCustomerRequired();
+  toggleAccountFields();
+});
 </script>
 {% endblock %}

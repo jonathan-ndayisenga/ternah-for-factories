@@ -15,19 +15,21 @@
 
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Date</th><th>Type</th><th>Reference</th><th>Method</th><th>Amount</th><th>Running Balance</th></tr>
-  {% for e in entries %}
+  <tr><th>Date</th><th>Type</th><th>Reference</th><th>Method</th><th>By</th><th>Amount</th><th>Running Balance</th></tr>
+  {% for e in page_obj %}
   <tr>
     <td>{{ e.when|date:"d M Y, H:i" }}</td>
     <td>{{ e.type }}</td>
     <td>{{ e.ref }}</td>
     <td>{{ e.method }}</td>
+    <td>{{ e.by.username|default:"—" }}</td>
     <td style="color:{% if e.amount < 0 %}var(--red){% else %}var(--green){% endif %};font-weight:700">
       {% if e.amount > 0 %}+{% endif %}UGX {{ e.amount|floatformat:0 }}
     </td>
     <td>UGX {{ e.running|floatformat:0 }}</td>
   </tr>
-  {% empty %}<tr><td colspan="6" style="color:var(--muted)">No cash movements recorded yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="7" style="color:var(--muted)">No cash movements recorded yet.</td></tr>{% endfor %}
 </table>
 </div>
+{% include "partials/pagination.html" %}
 {% endblock %}

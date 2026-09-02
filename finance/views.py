@@ -1,18 +1,34 @@
 """Finance, for the manager (and owner): payment accounts the business
-collects into, and a branch cashbook — every cash-in/cash-out event, in
-order, with a running balance. Treasury/float accounts, disbursements and
-payables are the next slice — not built yet, see the manager module plan."""
+collects into, a branch cashbook, an activity feed, and the real accounting
+layer — general ledger, trial balance, P&L, balance sheet, revenue by
+product, expense journal. Everything in the ledger is posted by
+finance.services as the underlying business events happen; nothing here
+writes to JournalEntry/JournalLine directly."""
 from datetime import datetime as dt
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.core.paginator import Paginator
+from django.db.models import DecimalField, ExpressionWrapper, F, Sum
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
+PAGE_SIZE = 25
+
+
+def _paginate(request, items, page_size=PAGE_SIZE):
+    page_obj = Paginator(items, page_size).get_page(request.GET.get("page"))
+    qd = request.GET.copy()
+    qd.pop("page", None)
+    return page_obj, qd.urlencode()
+
 from production.models import Distribution
-from sales.models import BankAccount, DebtorPayment, Expense, MomoAccount, PendingAction, Sale
+from sales.models import BankAccount, DebtorPayment, Expense, MomoAccount, PendingAction, Sale, SaleItem
+from .models import JournalEntry, JournalLine, LedgerAccount
+from .services import get_accounts, post_capital_transaction
 
 finance_staff_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER"))
+owner_required = user_passes_test(lambda u: u.is_authenticated and u.role == "OWNER")
 
 
 def _as_datetime(value):
@@ -70,15 +86,16 @@ def cashbook(request):
     debtor_branch_filter = {"debtor__location__branch": request.user.branch} if request.user.role == "MANAGER" else {}
 
     entries = []
-    for s in Sale.objects.filter(business=biz, amount_paid__gt=0, **branch_filter).select_related("location"):
+    for s in Sale.objects.filter(business=biz, amount_paid__gt=0, **branch_filter).select_related("location", "served_by"):
         entries.append({"sort_date": s.created_at.date(), "when": s.created_at, "type": "Sale",
-                        "ref": s.receipt_number, "method": s.get_payment_method_display(), "amount": s.amount_paid})
-    for p in DebtorPayment.objects.filter(debtor__business=biz, **debtor_branch_filter).select_related("debtor"):
+                        "ref": s.receipt_number, "method": s.get_payment_method_display(), "amount": s.amount_paid,
+                        "by": s.served_by})
+    for p in DebtorPayment.objects.filter(debtor__business=biz, **debtor_branch_filter).select_related("debtor", "received_by"):
         entries.append({"sort_date": p.created_at.date(), "when": p.created_at, "type": "Debt Collection",
-                        "ref": p.debtor.name, "method": p.method, "amount": p.amount})
-    for e in Expense.objects.filter(business=biz, **branch_filter):
+                        "ref": p.debtor.name, "method": p.method, "amount": p.amount, "by": p.received_by})
+    for e in Expense.objects.filter(business=biz, **branch_filter).select_related("recorded_by"):
         entries.append({"sort_date": e.date, "when": _as_datetime(e.date), "type": "Expense",
-                        "ref": e.category, "method": "—", "amount": -e.amount})
+                        "ref": e.category, "method": "—", "amount": -e.amount, "by": e.recorded_by})
 
     entries.sort(key=lambda x: (x["sort_date"], x["type"]))
     running = Decimal("0")
@@ -86,9 +103,11 @@ def cashbook(request):
         running += entry["amount"]
         entry["running"] = running
     entries.reverse()   # most recent first for display; running balance already computed forward
+    closing_balance = running
 
+    page_obj, extra_qs = _paginate(request, entries)
     return render(request, "finance/cashbook.html", {
-        "entries": entries, "closing_balance": running,
+        "page_obj": page_obj, "extra_qs": extra_qs, "closing_balance": closing_balance,
     })
 
 
@@ -157,4 +176,156 @@ def journal(request):
         })
 
     entries.sort(key=lambda x: x["sort_date"], reverse=True)
-    return render(request, "finance/journal.html", {"entries": entries})
+    page_obj, extra_qs = _paginate(request, entries)
+    return render(request, "finance/journal.html", {"page_obj": page_obj, "extra_qs": extra_qs})
+
+
+@login_required
+@finance_staff_required
+def general_ledger(request):
+    """The real double-entry journal — every posted entry, debits and
+    credits, in order. Branch-locked for a manager, business-wide for owner."""
+    biz = request.user.business
+    entries = JournalEntry.objects.filter(business=biz).prefetch_related("lines__ledger_account") \
+        .order_by("-date", "-id")
+    if request.user.role == "MANAGER":
+        entries = entries.filter(branch=request.user.branch)
+    page_obj, extra_qs = _paginate(request, entries, page_size=15)
+    return render(request, "finance/general_ledger.html", {"page_obj": page_obj, "extra_qs": extra_qs})
+
+
+@login_required
+@finance_staff_required
+def expense_journal(request):
+    biz = request.user.business
+    qs = Expense.objects.filter(business=biz).select_related("recorded_by", "location__branch")
+    if request.user.role == "MANAGER":
+        qs = qs.filter(location__branch=request.user.branch)
+    date_from = request.GET.get("from", "")
+    date_to = request.GET.get("to", "")
+    if date_from:
+        qs = qs.filter(date__gte=date_from)
+    if date_to:
+        qs = qs.filter(date__lte=date_to)
+    qs = qs.order_by("-date", "-id")
+    total = qs.aggregate(s=Sum("amount"))["s"] or Decimal("0")
+    by_category = qs.values("category").annotate(total=Sum("amount")).order_by("-total")
+    page_obj, extra_qs = _paginate(request, qs)
+    return render(request, "finance/expense_journal.html", {
+        "page_obj": page_obj, "extra_qs": extra_qs, "total": total, "by_category": by_category,
+        "date_from": date_from, "date_to": date_to,
+    })
+
+
+def _account_balance(balances, account):
+    """Positive = the account's normal healthy side (Dr for asset/expense/
+    COGS, Cr for liability/equity/income) — so every figure downstream in
+    the statements reads as a plain positive number, not a signed ledger net."""
+    d, c = balances.get(account.id, (Decimal("0"), Decimal("0")))
+    if account.type in ("ASSET", "EXPENSE", "COGS"):
+        return d - c
+    return c - d
+
+
+@login_required
+@owner_required
+def financial_reports(request):
+    """Trial Balance, Profit & Loss (both optionally date-ranged) and Balance
+    Sheet (always as-of-now — a balance sheet is a snapshot, not a period) —
+    plus Revenue by Product. Owner-only: these are whole-business statements,
+    not a branch's operational view."""
+    biz = request.user.business
+    accounts = get_accounts(biz)
+    date_from = request.GET.get("from", "")
+    date_to = request.GET.get("to", "")
+
+    def balances_for(qs):
+        agg = qs.values("ledger_account_id").annotate(d=Sum("debit"), c=Sum("credit"))
+        return {row["ledger_account_id"]: (row["d"] or Decimal("0"), row["c"] or Decimal("0")) for row in agg}
+
+    period_lines = JournalLine.objects.filter(entry__business=biz)
+    if date_from:
+        period_lines = period_lines.filter(entry__date__gte=date_from)
+    if date_to:
+        period_lines = period_lines.filter(entry__date__lte=date_to)
+    period_balances = balances_for(period_lines)
+    all_time_balances = balances_for(JournalLine.objects.filter(entry__business=biz))
+
+    # ---- Trial balance (period) ----
+    trial_rows, total_debit, total_credit = [], Decimal("0"), Decimal("0")
+    for acct in LedgerAccount.objects.filter(business=biz).order_by("code"):
+        d, c = period_balances.get(acct.id, (Decimal("0"), Decimal("0")))
+        net = d - c
+        dr, cr = (net, Decimal("0")) if net >= 0 else (Decimal("0"), -net)
+        if dr or cr:
+            trial_rows.append({"account": acct, "debit": dr, "credit": cr})
+        total_debit += dr
+        total_credit += cr
+
+    # ---- Profit & Loss (period) ----
+    revenue = _account_balance(period_balances, accounts["4000"])
+    cogs = _account_balance(period_balances, accounts["5000"])
+    opex = _account_balance(period_balances, accounts["5100"])
+    gross_profit = revenue - cogs
+    net_profit = gross_profit - opex
+
+    # ---- Balance sheet (as-of-now, all-time) ----
+    cash = _account_balance(all_time_balances, accounts["1000"])
+    momo = _account_balance(all_time_balances, accounts["1010"])
+    bank = _account_balance(all_time_balances, accounts["1020"])
+    receivable = _account_balance(all_time_balances, accounts["1100"])
+    rm_inventory = _account_balance(all_time_balances, accounts["1200"])
+    fg_inventory = _account_balance(all_time_balances, accounts["1210"])
+    payable = _account_balance(all_time_balances, accounts["2000"])
+    capital = _account_balance(all_time_balances, accounts["3000"])
+    total_assets = cash + momo + bank + receivable + rm_inventory + fg_inventory
+    retained_earnings = (
+        _account_balance(all_time_balances, accounts["4000"])
+        - _account_balance(all_time_balances, accounts["5000"])
+        - _account_balance(all_time_balances, accounts["5100"])
+    )
+
+    # ---- Revenue by product (period; falls back to all-time if no sales yet posted for the range) ----
+    item_qs = SaleItem.objects.filter(sale__business=biz)
+    if date_from:
+        item_qs = item_qs.filter(sale__created_at__date__gte=date_from)
+    if date_to:
+        item_qs = item_qs.filter(sale__created_at__date__lte=date_to)
+    cost_expr = ExpressionWrapper(F("unit_cost") * F("quantity"), output_field=DecimalField(max_digits=16, decimal_places=2))
+    product_rows = list(
+        item_qs.values("product__name")
+        .annotate(qty=Sum("quantity"), revenue=Sum("line_total"), cost=Sum(cost_expr))
+        .order_by("-revenue")
+    )
+    for row in product_rows:
+        row["profit"] = row["revenue"] - (row["cost"] or Decimal("0"))
+        row["margin_pct"] = (row["profit"] / row["revenue"] * 100) if row["revenue"] else Decimal("0")
+
+    return render(request, "finance/financial_reports.html", {
+        "date_from": date_from, "date_to": date_to,
+        "trial_rows": trial_rows, "total_debit": total_debit, "total_credit": total_credit,
+        "revenue": revenue, "cogs": cogs, "gross_profit": gross_profit, "opex": opex, "net_profit": net_profit,
+        "cash": cash, "momo": momo, "bank": bank, "receivable": receivable,
+        "rm_inventory": rm_inventory, "fg_inventory": fg_inventory, "total_assets": total_assets,
+        "payable": payable, "capital": capital, "retained_earnings": retained_earnings,
+        "total_liabilities_equity": payable + capital + retained_earnings,
+        "product_rows": product_rows,
+    })
+
+
+@login_required
+@owner_required
+def record_capital(request):
+    if request.method == "POST":
+        try:
+            amount = Decimal(request.POST.get("amount", ""))
+        except InvalidOperation:
+            amount = None
+        into = request.POST.get("into") if request.POST.get("into") in ("cash", "bank") else "cash"
+        if request.POST.get("direction") == "withdraw" and amount:
+            amount = -amount
+        if amount:
+            post_capital_transaction(
+                request.user.business, timezone.localdate(), amount, into,
+                request.POST.get("memo", "").strip(), request.user)
+    return redirect("finance:financial_reports")

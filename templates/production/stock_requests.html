@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Stock Requests{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Stock Requests</h2>
+</div>
+
+{% if requests %}
+<div class="grid charts-2">
+  {% for r in requests %}
+  <div class="card">
+    <h3>{{ r.requester_location.branch.name }}{% if r.requester_location.rep %} — {{ r.requester_location.rep.username }}{% else %} — {{ r.requester_location.get_type_display }}{% endif %}</h3>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:.5rem">Requested {{ r.created_at|date:"d M Y, H:i" }}</p>
+    <div class="table-scroll" style="margin-bottom:.75rem">
+    <table class="list">
+      <tr><th>Product</th><th>Quantity</th></tr>
+      {% for line in r.lines_display %}
+      <tr><td>{{ line.product.name|default:"Unknown product" }}</td><td>{{ line.quantity }}</td></tr>
+      {% endfor %}
+    </table>
+    </div>
+    <form method="post" action="{% url 'production:stock_request_fulfill' r.pk %}">
+      {% csrf_token %}
+      <button class="btn" style="width:100%">Fulfill — send as a distribution</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p style="color:var(--muted)">No pending stock requests. These come from outlets and reps — manual or auto-drafted on low stock — once that side is built.</p></div>
+{% endif %}
+{% endblock %}

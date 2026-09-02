@@ -4,23 +4,23 @@ priced; see Product.save() for the DRAFT -> ACTIVE rule.
 
 Everything below the pricing/distribution section is Production's own
 module: raw materials in, formulas, batches, QA, out to distribution."""
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import user_passes_test
-from django.db.models import Count, ProtectedError
+from django.db.models import Count, F, ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from finance.models import Supplier, SupplierPayable
-from sales.models import InventoryLocation, StockItem
+from finance.services import post_batch_completion, post_raw_material_purchase
+from sales.models import InventoryLocation, StockItem, StockMovement, StockRequest
 from .models import (
-    Category, Distribution, DistributionLine, FormulaLine, Product, ProductFormula,
-    ProductionBatch, RawMaterial, RawMaterialPurchase,
+    Category, Dispensation, Distribution, DistributionLine, FormulaLine, Product, ProductFormula,
+    ProductionBatch, QAReport, RawMaterial, RawMaterialPurchase,
 )
 
-catalog_manager_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER"))
 catalog_staff_required = user_passes_test(
     lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER", "PRODUCTION"))
 distribution_staff_required = user_passes_test(
@@ -28,7 +28,7 @@ distribution_staff_required = user_passes_test(
 production_staff_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "PRODUCTION"))
 
 TIER_LABELS = [("RETAIL", "retail_price", "Retail"), ("WHOLESALE", "wholesale_price", "Wholesale"),
-               ("DISTRIBUTION", "distribution_price", "Distribution"), ("CUSTOM", "custom_price", "Custom")]
+               ("DISTRIBUTION", "distribution_price", "Distribution")]
 
 
 def _latest_cost(product):
@@ -55,17 +55,24 @@ def product_create(request):
         name = request.POST.get("name", "").strip()
         category = Category.objects.filter(pk=request.POST.get("category"), business=biz).first()
         if name and category:
+            try:
+                shelf_life_days = int(request.POST.get("shelf_life_days") or 0) or None
+            except ValueError:
+                shelf_life_days = None
             Product.objects.create(business=biz, category=category, name=name,
                                    pack_size=request.POST.get("pack_size", "").strip(),
-                                   sku=request.POST.get("sku", "").strip())
+                                   sku=request.POST.get("sku", "").strip(),
+                                   shelf_life_days=shelf_life_days)
         return redirect("production:product_list")
     return render(request, "production/product_create.html", {"categories": categories})
 
 
-@catalog_manager_required
+@catalog_staff_required
 def product_price_edit(request, pk):
     biz = request.user.business
     product = get_object_or_404(Product, pk=pk, business=biz)
+    latest_cost = _latest_cost(product)
+    error = None
 
     if request.method == "POST":
         for code, field, label in TIER_LABELS:
@@ -77,17 +84,34 @@ def product_price_edit(request, pk):
                 setattr(product, field, Decimal(raw))
             except InvalidOperation:
                 pass
-        product.save()
-        return redirect("production:product_list")
 
-    latest_cost = _latest_cost(product)
+        cmin_raw = request.POST.get("custom_price_min", "").strip()
+        cmax_raw = request.POST.get("custom_price_max", "").strip()
+        try:
+            cmin = Decimal(cmin_raw) if cmin_raw else None
+            cmax = Decimal(cmax_raw) if cmax_raw else None
+        except InvalidOperation:
+            cmin = cmax = None
+        product.custom_price_min, product.custom_price_max = cmin, cmax
+        if cmin is not None and latest_cost is not None and cmin < latest_cost:
+            error = f"Custom price minimum can't be below cost (UGX {latest_cost:.2f}) — nothing saved."
+        elif cmin is not None and cmax is not None and cmin > cmax:
+            error = "Custom price minimum can't be higher than the maximum — nothing saved."
+        else:
+            product.save()
+            return redirect("production:product_list")
+
     margins = []
     for code, field, label in TIER_LABELS:
         price = getattr(product, field)
         if price is not None and latest_cost is not None:
             margins.append((label, price, price - latest_cost))
+    custom_margin_min = None
+    if product.custom_price_min is not None and latest_cost is not None:
+        custom_margin_min = product.custom_price_min - latest_cost
     return render(request, "production/product_price_edit.html", {
-        "product": product, "latest_cost": latest_cost, "margins": margins,
+        "product": product, "latest_cost": latest_cost, "margins": margins, "error": error,
+        "custom_margin_min": custom_margin_min,
     })
 
 
@@ -267,6 +291,7 @@ def raw_material_purchase(request, pk):
                 description=f"{material.name} — {purchase.batch_number or purchase.purchase_date}",
                 total_amount=total_cost, status="OPEN",
             )
+        post_raw_material_purchase(purchase)
         return redirect("production:raw_materials")
 
     return render(request, "production/raw_material_purchase.html", {"material": material})
@@ -340,3 +365,228 @@ def formula_edit(request, product_pk):
         "product": product, "current": current, "lines": lines, "unit_cost": unit_cost,
         "materials": materials, "versions": versions,
     })
+
+
+# ------------------------------------------------------- Batches & Dispensing
+
+@production_staff_required
+def batch_create(request):
+    """Target quantity x approved formula -> live requirements/shortfall
+    (client-side, using the same embedded-data technique as the POS). On
+    submit: verify stock covers every line first (all-or-nothing — no
+    partial batches), then dispense FEFO — earliest expiry first, falling
+    back to purchase date — recording exactly which purchase fed the batch."""
+    biz = request.user.business
+    products, batch_data = [], {}
+    for p in Product.objects.filter(business=biz).select_related("category"):
+        formula = p.formulas.filter(status="APPROVED").order_by("-version").first()
+        if not formula:
+            continue
+        products.append(p)
+        batch_data[str(p.pk)] = {
+            "unit_cost": float(formula.unit_cost()),
+            "lines": [
+                {"material": l.raw_material.name, "uom": l.raw_material.unit_of_measure,
+                 "qty_per_unit": float(l.quantity_per_unit), "stock": float(l.raw_material.current_stock())}
+                for l in formula.lines.select_related("raw_material").all()
+            ],
+        }
+
+    if request.method == "POST":
+        product = get_object_or_404(Product, pk=request.POST.get("product"), business=biz)
+        formula = product.formulas.filter(status="APPROVED").order_by("-version").first()
+        try:
+            target = int(request.POST.get("target_quantity"))
+        except (TypeError, ValueError):
+            target = 0
+        if not formula or target <= 0:
+            return redirect("production:batch_create")
+
+        lines = list(formula.lines.select_related("raw_material").all())
+        for line in lines:
+            needed = line.quantity_per_unit * target
+            if line.raw_material.current_stock() < needed:
+                return redirect("production:batch_create")   # shortfall — the live table should have caught this
+
+        today = date.today()
+        seq = ProductionBatch.objects.filter(business=biz, date=today).count() + 1
+        batch = ProductionBatch.objects.create(
+            business=biz, product=product, formula=formula,
+            batch_number=f"BATCH{request.user.username[:2].upper()}-{today:%d%m%y}-{seq:02d}",
+            date=today, target_quantity=target, status="DISPENSED", created_by=request.user,
+        )
+        for line in lines:
+            needed = line.quantity_per_unit * target
+            purchases = RawMaterialPurchase.objects.filter(
+                raw_material=line.raw_material, remaining_quantity__gt=0
+            ).order_by(F("expiry_date").asc(nulls_last=True), "purchase_date")
+            for purchase in purchases:
+                if needed <= 0:
+                    break
+                take = min(needed, purchase.remaining_quantity)
+                Dispensation.objects.create(batch=batch, raw_material=line.raw_material,
+                                            purchase=purchase, quantity_dispensed=take)
+                purchase.remaining_quantity -= take
+                purchase.save(update_fields=["remaining_quantity"])
+                needed -= take
+        # dispensing just starts the physical run — actual output and QA only
+        # exist once it's really done, so land on the queue, not the complete
+        # form for this one batch
+        return redirect("production:processing")
+
+    return render(request, "production/batch_create.html", {"products": products, "batch_data": batch_data})
+
+
+@production_staff_required
+def batch_complete(request, pk):
+    """Actual output (variance vs target), QA notes, and this is where the
+    unit cost becomes final: total dispensed cost / actual output, not
+    target — then that cost lands with the stock in the finished-goods store."""
+    biz = request.user.business
+    batch = get_object_or_404(ProductionBatch, pk=pk, business=biz, status="DISPENSED")
+
+    if request.method == "POST":
+        try:
+            actual = int(request.POST.get("actual_quantity"))
+        except (TypeError, ValueError):
+            actual = 0
+        if actual <= 0:
+            return redirect("production:batch_complete", pk=batch.pk)
+
+        manufacture_date = request.POST.get("manufacture_date") or date.today()
+        expiry_date = request.POST.get("expiry_date") or None
+        if isinstance(manufacture_date, str):
+            manufacture_date = date.fromisoformat(manufacture_date)
+        if expiry_date:
+            expiry_date = date.fromisoformat(expiry_date)
+            if expiry_date <= manufacture_date:
+                expiry_date = None   # nonsensical — drop it rather than stamp bad data
+
+        total_cost = sum(
+            (d.quantity_dispensed * d.purchase.unit_cost for d in batch.dispensations.select_related("purchase")),
+            Decimal("0"),
+        )
+        batch.actual_quantity = actual
+        batch.unit_cost_at_production = (total_cost / actual).quantize(Decimal("0.0001"))
+        batch.total_cost = total_cost.quantize(Decimal("0.01"))
+        batch.status = "COMPLETED"
+        batch.manufacture_date = manufacture_date
+        batch.expiry_date = expiry_date
+        batch.save(update_fields=["actual_quantity", "unit_cost_at_production", "total_cost", "status",
+                                  "manufacture_date", "expiry_date"])
+
+        QAReport.objects.create(
+            batch=batch, quality_notes=request.POST.get("quality_notes", "").strip(),
+            quantity_notes=request.POST.get("quantity_notes", "").strip(), author=request.user,
+        )
+
+        factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+        if factory_store:
+            item, _ = StockItem.objects.get_or_create(
+                location=factory_store, product=batch.product,
+                defaults={"buying_price": batch.unit_cost_at_production},
+            )
+            item.quantity += actual
+            item.buying_price = batch.unit_cost_at_production
+            item.save(update_fields=["quantity", "buying_price"])
+            StockMovement.objects.create(location=factory_store, product=batch.product, quantity=actual,
+                                         reason="DISTRIBUTION", reference=batch.batch_number)
+        post_batch_completion(batch)
+        return redirect("reports:production_batch_detail", pk=batch.pk)
+
+    return render(request, "production/batch_complete.html", {"batch": batch})
+
+
+# ------------------------------------------------------------ Stock Requests
+
+@production_staff_required
+def stock_request_list(request):
+    biz = request.user.business
+    requests = StockRequest.objects.filter(business=biz, status="SUBMITTED") \
+        .select_related("requester_location__branch", "requester_location__rep").order_by("created_at")
+    for r in requests:
+        r.lines_display = [
+            {"product": Product.objects.filter(pk=l.get("product_id")).first(), "quantity": l.get("quantity")}
+            for l in r.lines
+        ]
+    return render(request, "production/stock_requests.html", {"requests": requests})
+
+
+@production_staff_required
+def stock_request_fulfill(request, pk):
+    """Fulfilling one becomes a distribution — same Active-only gate, same
+    stock decrement — just sourced from the request's lines instead of a
+    hand-picked cart."""
+    biz = request.user.business
+    stock_request = get_object_or_404(StockRequest, pk=pk, business=biz, status="SUBMITTED")
+    if request.method == "POST":
+        factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+        today = date.today()
+        seq = Distribution.objects.filter(business=biz, date=today).count() + 1
+        dist = Distribution.objects.create(
+            business=biz, receiver_location=stock_request.requester_location,
+            delivery_note_number=f"DN-{request.user.username[:4].upper()}-{today:%d%m%y}-{seq:03d}",
+            date=today, status="SENT", created_by=request.user,
+        )
+        for line in stock_request.lines:
+            product = Product.objects.filter(pk=line.get("product_id"), business=biz, status="ACTIVE").first()
+            try:
+                qty = int(line.get("quantity", 0))
+            except (TypeError, ValueError):
+                qty = 0
+            if not product or qty <= 0 or not factory_store:
+                continue
+            store_item = StockItem.objects.filter(location=factory_store, product=product).first()
+            if not store_item or store_item.quantity < qty:
+                continue
+            DistributionLine.objects.create(distribution=dist, product=product, quantity=qty)
+            store_item.quantity -= qty
+            store_item.save(update_fields=["quantity"])
+        stock_request.status = "FULFILLED"
+        stock_request.save(update_fields=["status"])
+    return redirect("production:stock_requests")
+
+
+# --------------------------------------------------------------- Dashboard
+
+@production_staff_required
+def dashboard(request):
+    biz = request.user.business
+    today = date.today()
+    materials = list(RawMaterial.objects.filter(business=biz))
+    for m in materials:
+        m.stock = m.current_stock()
+    low_stock = [m for m in materials if m.stock <= m.reorder_level]
+    expiring = RawMaterialPurchase.objects.filter(
+        raw_material__business=biz, remaining_quantity__gt=0,
+        expiry_date__isnull=False, expiry_date__lte=today + timedelta(days=60),
+    ).select_related("raw_material").order_by("expiry_date")[:10]
+
+    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+    store_items = StockItem.objects.filter(location=factory_store).select_related("product") \
+        if factory_store else StockItem.objects.none()
+    finished_expiring = ProductionBatch.objects.filter(
+        business=biz, status="COMPLETED", expiry_date__isnull=False, expiry_date__lte=today + timedelta(days=60),
+    ).select_related("product").order_by("expiry_date")[:10]
+
+    return render(request, "production/dashboard.html", {
+        "low_stock": low_stock,
+        "expiring": expiring,
+        "finished_expiring": finished_expiring,
+        "store_items": store_items,
+        "recent_batches": ProductionBatch.objects.filter(business=biz).order_by("-date", "-id")[:8],
+        "processing_count": ProductionBatch.objects.filter(business=biz, status="DISPENSED").count(),
+        "awaiting_confirmation": Distribution.objects.filter(business=biz, status="SENT").count(),
+        "stock_requests_count": StockRequest.objects.filter(business=biz, status="SUBMITTED").count(),
+        "awaiting_pricing": Product.objects.filter(business=biz, status="DRAFT").count(),
+    })
+
+
+@production_staff_required
+def processing_list(request):
+    """The queue between dispensing and the finished-goods store: batches
+    that have had raw materials drawn but haven't been completed with
+    actual output + QA yet."""
+    batches = ProductionBatch.objects.filter(business=request.user.business, status="DISPENSED") \
+        .select_related("product").order_by("date")
+    return render(request, "production/processing.html", {"batches": batches})

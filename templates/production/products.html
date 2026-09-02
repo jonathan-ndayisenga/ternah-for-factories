@@ -2,7 +2,7 @@
 {% block title %}Products & Pricing{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h2>Products{% if request.user.role == "OWNER" or request.user.role == "MANAGER" %} & Pricing{% endif %}</h2>
+  <h2>Products & Pricing</h2>
   <span class="spacer"></span>
   {% if awaiting_count %}<span class="pill warning">{{ awaiting_count }} awaiting pricing</span>{% endif %}
   {% if request.user.role == "OWNER" or request.user.role == "PRODUCTION" %}
@@ -25,11 +25,9 @@
     <td>{% if p.retail_price %}UGX {{ p.retail_price|floatformat:0 }}{% else %}—{% endif %}</td>
     <td>{% if p.wholesale_price %}UGX {{ p.wholesale_price|floatformat:0 }}{% else %}—{% endif %}</td>
     <td>{% if p.distribution_price %}UGX {{ p.distribution_price|floatformat:0 }}{% else %}—{% endif %}</td>
-    <td>{% if p.custom_price %}UGX {{ p.custom_price|floatformat:0 }}{% else %}—{% endif %}</td>
+    <td>{% if p.custom_price_min and p.custom_price_max %}UGX {{ p.custom_price_min|floatformat:0 }}–{{ p.custom_price_max|floatformat:0 }}{% else %}—{% endif %}</td>
     <td>
-      {% if request.user.role == "OWNER" or request.user.role == "MANAGER" %}
-        <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:product_price_edit' p.pk %}">{% if p.status == "DRAFT" %}Price it{% else %}Edit prices{% endif %}</a>
-      {% endif %}
+      <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:product_price_edit' p.pk %}">{% if p.status == "DRAFT" %}Price it{% else %}Edit prices{% endif %}</a>
     </td>
     <td>
       {% if request.user.role == "OWNER" or request.user.role == "PRODUCTION" %}

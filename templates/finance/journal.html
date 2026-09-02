@@ -15,7 +15,7 @@
 <div class="table-scroll">
 <table class="list">
   <tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th><th>By</th></tr>
-  {% for e in entries %}
+  {% for e in page_obj %}
   <tr>
     <td>{{ e.when|date:"d M Y, H:i" }}</td>
     <td><span class="pill warning">{{ e.type }}</span></td>
@@ -32,4 +32,5 @@
   {% empty %}<tr><td colspan="5" style="color:var(--muted)">No activity recorded yet.</td></tr>{% endfor %}
 </table>
 </div>
+{% include "partials/pagination.html" %}
 {% endblock %}

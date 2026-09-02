@@ -3,10 +3,14 @@
 {% block content %}
 <div class="page-head">
   <h2>Production Batches</h2>
+  {% if request.user.role == "PRODUCTION" or request.user.role == "OWNER" %}
+    <span class="spacer"></span>
+    <a class="btn" href="{% url 'production:batch_create' %}">+ New Batch</a>
+  {% endif %}
 </div>
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Batch</th><th>Product</th><th>Date</th><th>Target</th><th>Actual</th><th>Unit Cost</th><th>Total Cost</th><th>Status</th></tr>
+  <tr><th>Batch</th><th>Product</th><th>Date</th><th>Target</th><th>Actual</th><th>Unit Cost</th><th>Total Cost</th><th>Status</th><th></th></tr>
   {% for b in batches %}
   <tr>
     <td><a href="{% url 'reports:production_batch_detail' b.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ b.batch_number }}</a></td>
@@ -21,8 +25,13 @@
       {% elif b.status == "DISPENSED" %}<span class="pill warning">Dispensed</span>
       {% else %}<span class="pill locked">Planned</span>{% endif %}
     </td>
+    <td>
+      {% if b.status == "DISPENSED" and request.user.role == "PRODUCTION" %}
+        <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:batch_complete' b.pk %}">Complete</a>
+      {% endif %}
+    </td>
   </tr>
-  {% empty %}<tr><td colspan="8" style="color:var(--muted)">No production batches yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="9" style="color:var(--muted)">No production batches yet.</td></tr>{% endfor %}
 </table>
 </div>
 {% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Complete Batch — {{ batch.batch_number }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:600px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">{{ batch.batch_number }}</h2>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">{{ batch.product.name }} — target {{ batch.target_quantity }} units. Dispensed; record what actually came out.</p>
+
+  <form method="post" class="stack" id="completeForm">
+    {% csrf_token %}
+    <label>Actual quantity produced</label>
+    <input name="actual_quantity" id="actualQty" type="number" min="1" value="{{ batch.target_quantity }}" required oninput="updateVariance()">
+    <p id="variance" style="margin-top:.4rem;font-weight:600"></p>
+
+    <label>Quality notes</label>
+    <textarea name="quality_notes" rows="3" required placeholder="Colour, scent, viscosity, texture..."></textarea>
+    <label>Quantity notes <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <textarea name="quantity_notes" rows="2" placeholder="Any losses, spillage, fill errors..."></textarea>
+
+    <label>Manufacture date</label>
+    <input name="manufacture_date" id="mfgDate" type="date" required>
+    <label>Expiry date <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">{% if batch.product.shelf_life_days %}(auto-suggested from {{ batch.product.name }}'s {{ batch.product.shelf_life_days }}-day shelf life — adjust if needed){% else %}(optional){% endif %}</span></label>
+    <input name="expiry_date" id="expDate" type="date">
+
+    <button class="btn" style="margin-top:1.2rem;width:100%">Complete batch & land in store</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const target = {{ batch.target_quantity }};
+const shelfLifeDays = {{ batch.product.shelf_life_days|default:"null" }};
+function updateVariance() {
+  const actual = parseFloat(document.getElementById("actualQty").value) || 0;
+  const diff = actual - target;
+  const el = document.getElementById("variance");
+  if (!actual) { el.textContent = ""; return; }
+  el.style.color = diff < 0 ? "var(--red)" : (diff > 0 ? "var(--green)" : "var(--muted)");
+  el.textContent = diff === 0 ? "On target" : (diff > 0 ? "+" + diff + " over target" : diff + " under target");
+}
+function toLocalISODate(d) {
+  // toISOString() converts to UTC first, which rolls the date back a day
+  // for any timezone ahead of UTC (e.g. Kampala, UTC+3) — format from the
+  // local getters instead so the date shown matches the date picked.
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+function updateExpiry() {
+  const mfg = document.getElementById("mfgDate").value;
+  const expInput = document.getElementById("expDate");
+  if (mfg && shelfLifeDays && !expInput.dataset.touched) {
+    const d = new Date(mfg + "T00:00:00");
+    d.setDate(d.getDate() + shelfLifeDays);
+    expInput.value = toLocalISODate(d);
+  }
+}
+document.addEventListener("DOMContentLoaded", function () {
+  updateVariance();
+  document.getElementById("mfgDate").value = toLocalISODate(new Date());
+  document.getElementById("mfgDate").addEventListener("change", updateExpiry);
+  document.getElementById("expDate").addEventListener("input", function () { this.dataset.touched = "1"; });
+  updateExpiry();
+});
+</script>
+{% endblock %}

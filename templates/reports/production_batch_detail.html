@@ -20,6 +20,13 @@
   <div class="card"><h3>Unit Cost</h3><div class="big" style="font-size:1.2rem">UGX {{ batch.unit_cost_at_production|floatformat:2 }}</div></div>
 </div>
 
+{% if batch.manufacture_date or batch.expiry_date %}
+<div class="grid cards-4" style="margin-top:1rem">
+  <div class="card"><h3>Manufacture Date</h3><div class="big" style="font-size:1.2rem">{{ batch.manufacture_date|date:"d M Y"|default:"—" }}</div></div>
+  <div class="card"><h3>Expiry Date</h3><div class="big" style="font-size:1.2rem">{{ batch.expiry_date|date:"d M Y"|default:"—" }}</div></div>
+</div>
+{% endif %}
+
 <div class="card" style="margin-top:1rem">
   <h3>Formula used — v{{ batch.formula.version }}</h3>
   <div class="table-scroll">

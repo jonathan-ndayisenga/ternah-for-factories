@@ -4,7 +4,7 @@ endpoints render the locked template. Super user bypasses everything."""
 from django.shortcuts import render
 
 WHITELIST_PREFIXES = ("/accounts/login", "/accounts/logout", "/accounts/profile",
-                      "/platform", "/admin", "/static", "/billing/top-up")
+                      "/platform", "/admin", "/static")
 
 
 class SoftLockMiddleware:

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Production Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Production Dashboard</h2>
+</div>
+
+<div class="grid cards-4">
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:raw_materials' %}">
+    <h3>Low Stock Materials</h3>
+    <div class="big" style="{% if low_stock %}color:var(--red){% endif %}">{{ low_stock|length }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:raw_materials' %}">
+    <h3>Expiring Within 60 Days</h3>
+    <div class="big" style="{% if expiring %}color:var(--amber){% endif %}">{{ expiring|length }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:processing' %}">
+    <h3>Processing</h3>
+    <div class="big" style="{% if processing_count %}color:var(--amber){% endif %}">{{ processing_count }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:distributions' %}">
+    <h3>Awaiting Confirmation</h3>
+    <div class="big" style="{% if awaiting_confirmation %}color:var(--amber){% endif %}">{{ awaiting_confirmation }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:stock_requests' %}">
+    <h3>Stock Requests</h3>
+    <div class="big" style="{% if stock_requests_count %}color:var(--amber){% endif %}">{{ stock_requests_count }}</div>
+  </a>
+</div>
+
+{% if awaiting_pricing %}
+<div class="card" style="margin-top:1rem;background:#FDEBD0">
+  <p style="font-weight:600;color:var(--amber)">{{ awaiting_pricing }} product{{ awaiting_pricing|pluralize }} sitting with the manager awaiting a price before they can be distributed.</p>
+</div>
+{% endif %}
+
+<div class="grid charts-2" style="margin-top:1rem">
+  <div class="card">
+    <h3>Raw Materials — reorder & expiry watch</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Material</th><th>Stock</th><th>Reorder Level</th></tr>
+      {% for m in low_stock %}
+      <tr><td>{{ m.name }}</td><td style="color:var(--red);font-weight:700">{{ m.stock|floatformat:3 }} {{ m.unit_of_measure }}</td><td>{{ m.reorder_level|floatformat:3 }}</td></tr>
+      {% empty %}<tr><td colspan="3" style="color:var(--muted)">Nothing below reorder level.</td></tr>{% endfor %}
+    </table>
+    </div>
+    <div class="table-scroll" style="margin-top:.75rem">
+    <table class="list">
+      <tr><th>Purchase Batch</th><th>Material</th><th>Expires</th><th>Remaining</th></tr>
+      {% for p in expiring %}
+      <tr>
+        <td>{{ p.batch_number|default:"—" }}</td>
+        <td>{{ p.raw_material.name }}</td>
+        <td style="color:var(--amber);font-weight:700">{{ p.expiry_date|date:"d M Y" }}</td>
+        <td>{{ p.remaining_quantity|floatformat:3 }} {{ p.raw_material.unit_of_measure }}</td>
+      </tr>
+      {% empty %}<tr><td colspan="4" style="color:var(--muted)">Nothing expiring within 60 days.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Finished Goods Store</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Product</th><th>Quantity</th></tr>
+      {% for i in store_items %}
+      <tr><td>{{ i.product.name }}</td><td>{{ i.quantity }}</td></tr>
+      {% empty %}<tr><td colspan="2" style="color:var(--muted)">No finished goods in store.</td></tr>{% endfor %}
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.25rem">Finished Goods — Expiring Within 60 Days</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Batch</th><th>Product</th><th>Expires</th></tr>
+      {% for b in finished_expiring %}
+      <tr>
+        <td><a href="{% url 'reports:production_batch_detail' b.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ b.batch_number }}</a></td>
+        <td>{{ b.product.name }}</td>
+        <td style="color:var(--amber);font-weight:700">{{ b.expiry_date|date:"d M Y" }}</td>
+      </tr>
+      {% empty %}<tr><td colspan="3" style="color:var(--muted)">Nothing expiring within 60 days.</td></tr>{% endfor %}
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.25rem">Recent Batches</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Batch</th><th>Product</th><th>Status</th></tr>
+      {% for b in recent_batches %}
+      <tr>
+        <td><a href="{% url 'reports:production_batch_detail' b.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ b.batch_number }}</a></td>
+        <td>{{ b.product.name }}</td>
+        <td>
+          {% if b.status == "COMPLETED" %}<span class="pill active">Completed</span>
+          {% elif b.status == "DISPENSED" %}<span class="pill warning">Dispensed</span>
+          {% else %}<span class="pill locked">Planned</span>{% endif %}
+        </td>
+      </tr>
+      {% empty %}<tr><td colspan="3" style="color:var(--muted)">No batches yet.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

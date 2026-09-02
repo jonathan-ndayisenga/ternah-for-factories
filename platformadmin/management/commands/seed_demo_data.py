@@ -18,7 +18,7 @@ from django.utils.text import slugify
 
 from core.models import Branch
 from finance.models import Supplier
-from platformadmin.models import AuditLog, Business, Module, ModuleSubscription, TokenTransaction
+from platformadmin.models import AuditLog, Business, Module, ModuleSubscription, SubscriptionExtension
 from production.models import (
     Category, Distribution, DistributionLine, Dispensation, FormulaLine,
     Product, ProductFormula, ProductionBatch, QAReport, RawMaterial,
@@ -93,7 +93,7 @@ class Command(BaseCommand):
         InventoryLocation.objects.filter(business=biz).delete()
         MomoAccount.objects.filter(business=biz).delete()
         Supplier.objects.filter(business=biz).delete()
-        biz.delete()  # remaining children (User, Branch, ModuleSubscription, TokenTransaction, AuditLog) are plain CASCADE
+        biz.delete()  # remaining children (User, Branch, ModuleSubscription, SubscriptionExtension, AuditLog) are plain CASCADE
 
     def _make_business(self):
         biz = Business.objects.create(
@@ -101,12 +101,11 @@ class Command(BaseCommand):
             contact_email="owner@ternahcosmetics.example",
             contact_phone="0700111222", address="Plot 14, Nakawa Industrial Area, Kampala",
             subscription_expires_at=timezone.now() + timedelta(days=365),
-            token_balance=24,
         )
         for code in FACTORY_MODULES:
             module, _ = Module.objects.get_or_create(code=code, defaults={"name": code.title()})
             ModuleSubscription.objects.create(business=biz, module=module)
-        TokenTransaction.objects.create(business=biz, amount=24, reason="Demo seed top-up")
+        SubscriptionExtension.objects.create(business=biz, months=12, reason="Demo seed — initial subscription")
         AuditLog.write("TENANT_CREATED", business=biz, description=f"Seeded demo tenant {biz.name}")
         return biz
 

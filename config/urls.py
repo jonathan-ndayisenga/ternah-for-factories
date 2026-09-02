@@ -21,7 +21,7 @@ def home(request):
     if view in ("CASHIER", "SALES_REP"):
         return redirect("sales:pos")
     if view == "PRODUCTION":
-        return redirect("production:distributions")
+        return redirect("production:dashboard")
     return redirect("coming_soon")
 
 

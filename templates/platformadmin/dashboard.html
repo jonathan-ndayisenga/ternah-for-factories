@@ -6,12 +6,40 @@
   <span class="spacer"></span>
   <a class="btn" href="{% url 'platformadmin:onboard' %}">+ Onboard a Factory</a>
 </div>
-<div class="table-scroll">
+
+<div class="grid cards-4">
+  <div class="card">
+    <h3>Businesses Onboarded</h3>
+    <div class="big">{{ stats.total }}</div>
+  </div>
+  <div class="card">
+    <h3>Active</h3>
+    <div class="big" style="color:var(--green)">{{ stats.active }}</div>
+  </div>
+  <div class="card">
+    <h3>Expiring Soon</h3>
+    <div class="big" style="{% if stats.warning %}color:var(--amber){% endif %}">{{ stats.warning }}</div>
+  </div>
+  <div class="card">
+    <h3>Soft-Locked</h3>
+    <div class="big" style="{% if stats.locked %}color:var(--red){% endif %}">{{ stats.locked }}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3 style="color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.4px">Monthly Recurring Revenue — active subscriptions only</h3>
+  <div class="big" style="font-size:1.6rem;margin-top:.25rem">UGX {{ stats.mrr|floatformat:0 }}</div>
+</div>
+
+<div class="table-scroll" style="margin-top:1rem">
 <table class="list">
-  <tr><th>Business</th><th>Billing state</th><th>Expiry</th><th>Tokens</th><th>Actions</th></tr>
+  <tr><th>Business</th><th>Billing state</th><th>Expiry</th><th>Modules</th><th>Extend</th><th></th></tr>
   {% for b in businesses %}
   <tr>
-    <td><strong>{{ b.name }}</strong><br><span style="color:var(--muted);font-size:.8rem">{{ b.contact_email }}</span></td>
+    <td>
+      <a href="{% url 'platformadmin:business_detail' b.pk %}" style="color:var(--ternah-blue);font-weight:700">{{ b.name }}</a>
+      <br><span style="color:var(--muted);font-size:.8rem">{{ b.contact_email }}</span>
+    </td>
     <td>
       {% if b.billing_state == "ACTIVE" %}<span class="pill active">Active</span>
       {% elif b.billing_state == "WARNING" %}<span class="pill warning">Expiring soon</span>
@@ -19,18 +47,24 @@
       {% else %}<span class="pill locked">Soft-locked</span>{% endif %}
     </td>
     <td>{{ b.subscription_expires_at|date:"d M Y"|default:"—" }}</td>
-    <td>{{ b.token_balance }}</td>
+    <td>{{ b.module_count }}</td>
     <td>
-      <form method="post" action="{% url 'platformadmin:top_up' b.pk %}" style="display:inline-flex;gap:.4rem">
+      <form method="post" action="{% url 'platformadmin:extend_subscription' b.pk %}" style="display:inline-flex;gap:.4rem">
         {% csrf_token %}
-        <input name="amount" type="number" min="1" value="1" style="width:60px;padding:.3rem;border:1px solid #D7DEE6;border-radius:8px">
-        <button class="btn">Top up</button>
+        <input type="hidden" name="next" value="{% url 'platformadmin:dashboard' %}">
+        <input name="months" type="number" min="1" value="1" style="width:60px;padding:.3rem;border:1px solid #D7DEE6;border-radius:8px">
+        <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">+ months</button>
       </form>
-      <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)"
-         href="{% url 'platformadmin:toggle_active' b.pk %}">{% if b.is_active %}Lock{% else %}Activate{% endif %}</a>
+    </td>
+    <td>
+      <form method="post" action="{% url 'platformadmin:toggle_active' b.pk %}" style="display:inline">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'platformadmin:dashboard' %}">
+        <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">{% if b.is_active %}Lock{% else %}Activate{% endif %}</button>
+      </form>
     </td>
   </tr>
-  {% empty %}<tr><td colspan="5" style="color:var(--muted)">No factories onboarded yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="6" style="color:var(--muted)">No factories onboarded yet.</td></tr>{% endfor %}
 </table>
 </div>
 {% endblock %}

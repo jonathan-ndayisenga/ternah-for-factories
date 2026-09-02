@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ business.name }} — Platform{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>{{ business.name }}</h2>
+  <span class="spacer"></span>
+  {% if business.billing_state == "ACTIVE" %}<span class="pill active">Active</span>
+  {% elif business.billing_state == "WARNING" %}<span class="pill warning">Expiring soon</span>
+  {% elif business.billing_state == "EXPIRED" %}<span class="pill warning">Expired (grace)</span>
+  {% else %}<span class="pill locked">Soft-locked</span>{% endif %}
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'platformadmin:dashboard' %}">&larr; All factories</a>
+</div>
+
+<div class="grid charts-2">
+  <div class="card">
+    <h3>Business Details</h3>
+    <p style="margin-top:.4rem"><strong>Contact:</strong> {{ business.contact_email }}{% if business.contact_phone %} · {{ business.contact_phone }}{% endif %}</p>
+    {% if business.address %}<p style="color:var(--muted);font-size:.9rem;margin-top:.3rem">{{ business.address }}</p>{% endif %}
+    <p style="margin-top:.6rem"><strong>Subscription expires:</strong> {{ business.subscription_expires_at|date:"d M Y, H:i"|default:"—" }}</p>
+    <p style="color:var(--muted);font-size:.85rem;margin-top:.2rem">Onboarded {{ business.created_at|date:"d M Y" }}</p>
+
+    <form method="post" action="{% url 'platformadmin:extend_subscription' business.pk %}" class="stack" style="margin-top:1rem">
+      {% csrf_token %}
+      <label>Extend subscription by (months)</label>
+      <input name="months" type="number" min="1" value="1" required>
+      <label>Reference <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional — bank slip, MoMo code)</span></label>
+      <input name="reference">
+      <button class="btn" style="margin-top:.8rem;width:100%">Extend subscription</button>
+    </form>
+
+    <form method="post" action="{% url 'platformadmin:toggle_active' business.pk %}" style="margin-top:.6rem">
+      {% csrf_token %}
+      <button class="btn ghost" style="width:100%;background:#EDF1F5;color:var(--ternah-navy)">
+        {% if business.is_active %}Lock this factory{% else %}Reactivate this factory{% endif %}
+      </button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Modules</h3>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:.6rem">Toggle what this factory can see in its sidebar.</p>
+    {% for m in modules %}
+    <form method="post" action="{% url 'platformadmin:toggle_module' business.pk m.pk %}"
+          style="display:flex;justify-content:space-between;align-items:center;padding:.55rem 0;border-bottom:1px solid #EDF1F5">
+      {% csrf_token %}
+      <span style="font-weight:600;font-size:.9rem">{{ m.name }}</span>
+      <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.35rem .8rem">
+        {% if m.pk in subscribed_ids %}<span style="color:var(--green)">On</span>{% else %}<span style="color:var(--muted)">Off</span>{% endif %}
+      </button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="grid charts-2" style="margin-top:1rem">
+  <div class="card">
+    <h3>Subscription History</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Date</th><th>Months</th><th>Reason</th><th>Reference</th></tr>
+      {% for e in extensions %}
+      <tr>
+        <td>{{ e.created_at|date:"d M Y" }}</td>
+        <td>{{ e.months }}</td>
+        <td>{{ e.reason }}</td>
+        <td>{{ e.reference|default:"—" }}</td>
+      </tr>
+      {% empty %}<tr><td colspan="4" style="color:var(--muted)">No extensions filed yet.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Audit Log</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Date</th><th>Action</th><th>By</th><th>Detail</th></tr>
+      {% for a in audit %}
+      <tr>
+        <td>{{ a.created_at|date:"d M Y, H:i" }}</td>
+        <td>{{ a.action }}</td>
+        <td>{{ a.actor.username|default:"System" }}</td>
+        <td style="color:var(--muted)">{{ a.description }}</td>
+      </tr>
+      {% empty %}<tr><td colspan="4" style="color:var(--muted)">Nothing logged yet.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

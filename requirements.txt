@@ -1,2 +1,8 @@
 Django>=5.0
-# psycopg[binary]  # uncomment for PostgreSQL in production
+python-dotenv>=1.0
+whitenoise>=6.6
+
+# Production only — dev uses SQLite + runserver and never imports these,
+# but installing them locally too keeps `pip install -r requirements.txt` simple.
+gunicorn>=22.0
+psycopg[binary]>=3.1

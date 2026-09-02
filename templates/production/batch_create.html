@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}New Batch{% endblock %}
+{% block content %}
+{{ batch_data|json_script:"batchData" }}
+<div class="card" style="max-width:720px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.5rem">New Batch</h2>
+  {% if not products %}
+    <p style="color:var(--muted)">No product has an approved formula yet — approve one under Products & Formulas first.</p>
+  {% else %}
+  <form method="post" class="stack" id="batchForm">
+    {% csrf_token %}
+    <label>Product</label>
+    <select name="product" id="productSelect" required onchange="recompute()">
+      <option value="">Select product…</option>
+      {% for p in products %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+    </select>
+    <label>Target quantity</label>
+    <input name="target_quantity" id="targetQty" type="number" min="1" required oninput="recompute()">
+
+    <div id="reqCard" style="display:none;margin-top:1rem">
+      <h3 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:.5rem">Requirements</h3>
+      <div class="table-scroll">
+      <table class="list">
+        <tr><th>Raw Material</th><th>Needed</th><th>In Stock</th><th>Shortfall</th></tr>
+        <tbody id="reqRows"></tbody>
+      </table>
+      </div>
+      <p id="costLine" style="margin-top:.75rem;font-weight:700;color:var(--ternah-navy)"></p>
+      <p id="shortfallWarning" style="display:none;margin-top:.5rem;color:var(--red);font-weight:600">
+        Not enough stock for one or more materials — this batch can't be dispensed until more is purchased.
+      </p>
+    </div>
+
+    <button class="btn" style="margin-top:1.2rem;width:100%">Dispense batch</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const batchData = JSON.parse(document.getElementById("batchData").textContent);
+function recompute() {
+  const pid = document.getElementById("productSelect").value;
+  const target = parseFloat(document.getElementById("targetQty").value) || 0;
+  const reqCard = document.getElementById("reqCard");
+  const rows = document.getElementById("reqRows");
+  const warning = document.getElementById("shortfallWarning");
+  if (!pid || !batchData[pid]) { reqCard.style.display = "none"; return; }
+
+  const data = batchData[pid];
+  let hasShortfall = false;
+  rows.innerHTML = "";
+  data.lines.forEach(line => {
+    const needed = line.qty_per_unit * target;
+    const shortfall = needed - line.stock;
+    if (shortfall > 0) hasShortfall = true;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${line.material}</td><td>${needed.toFixed(3)} ${line.uom}</td>` +
+      `<td>${line.stock.toFixed(3)} ${line.uom}</td>` +
+      `<td style="color:${shortfall > 0 ? 'var(--red)' : 'var(--green)'};font-weight:700">` +
+      `${shortfall > 0 ? shortfall.toFixed(3) + " " + line.uom + " short" : "OK"}</td>`;
+    rows.appendChild(tr);
+  });
+  document.getElementById("costLine").textContent =
+    "Unit cost: UGX " + data.unit_cost.toFixed(4) + "  ·  Total batch cost: UGX " + (data.unit_cost * target).toFixed(2);
+  warning.style.display = hasShortfall ? "block" : "none";
+  reqCard.style.display = "block";
+}
+</script>
+{% endblock %}

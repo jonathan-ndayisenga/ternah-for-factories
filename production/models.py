@@ -71,10 +71,15 @@ class Product(TimeStamped):
     retail_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     wholesale_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     distribution_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
-    custom_price = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    # Custom isn't a fixed price like the other three — the cashier types the
+    # actual figure at sale time, bounded by this manager-set range (see
+    # sales.views.record_sale). Both must be set for CUSTOM to be sellable at all.
+    custom_price_min = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    custom_price_max = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    shelf_life_days = models.PositiveIntegerField(null=True, blank=True)   # optional -> auto-suggests batch expiry
 
     PRICE_TIERS = [("RETAIL", "retail_price"), ("WHOLESALE", "wholesale_price"),
-                   ("DISTRIBUTION", "distribution_price"), ("CUSTOM", "custom_price")]
+                   ("DISTRIBUTION", "distribution_price")]   # CUSTOM is typed at sale time, not looked up here
 
     def save(self, *args, **kwargs):
         # retail is the mandatory baseline tier — set it and the product goes live
@@ -125,6 +130,8 @@ class ProductionBatch(TimeStamped):
     total_cost = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     status = models.CharField(max_length=10, choices=STATUS, default="PLANNED")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    manufacture_date = models.DateField(null=True, blank=True)   # set at Complete & QA, not at dispensing
+    expiry_date = models.DateField(null=True, blank=True)        # auto-suggested from product.shelf_life_days
 
     def requirements(self):
         """Formula x target output -> total raw material needed per line."""

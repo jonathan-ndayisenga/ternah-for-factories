@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}General Ledger{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>General Ledger{% if request.user.role == "MANAGER" %} — {{ request.user.branch.name }}{% endif %}</h2>
+  <span class="spacer"></span>
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+<div class="print-only print-masthead">
+  <h1>{{ request.user.business.name }}</h1>
+  <p>General Ledger — generated {% now "d M Y, H:i" %}</p>
+</div>
+
+<p style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">Every posted double-entry — the real accounting journal, not the activity feed. Each entry always balances: total debits = total credits.</p>
+
+{% for e in page_obj %}
+<div class="card" style="margin-bottom:.75rem">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:.4rem">
+    <div>
+      <span class="pill active">{{ e.get_source_display }}</span>
+      <strong style="margin-left:.5rem">{{ e.memo }}</strong>
+    </div>
+    <span style="color:var(--muted);font-size:.85rem">{{ e.date|date:"d M Y" }}{% if e.number %} · {{ e.number }}{% endif %}</span>
+  </div>
+  <div class="table-scroll" style="margin-top:.6rem">
+  <table class="list">
+    <tr><th>Account</th><th>Debit</th><th>Credit</th></tr>
+    {% for line in e.lines.all %}
+    <tr>
+      <td>{{ line.ledger_account.code }} — {{ line.ledger_account.name }}</td>
+      <td>{% if line.debit %}UGX {{ line.debit|floatformat:0 }}{% endif %}</td>
+      <td>{% if line.credit %}UGX {{ line.credit|floatformat:0 }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% empty %}
+<div class="card"><p style="color:var(--muted)">Nothing posted yet.</p></div>
+{% endfor %}
+{% include "partials/pagination.html" %}
+{% endblock %}

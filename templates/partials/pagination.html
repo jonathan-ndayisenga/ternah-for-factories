@@ -1,0 +1,13 @@
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="pagination no-print">
+  {% if page_obj.has_previous %}
+    <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="?{% if extra_qs %}{{ extra_qs }}&{% endif %}{{ page_param|default:"page" }}=1{% if anchor %}#{{ anchor }}{% endif %}">&laquo; First</a>
+    <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="?{% if extra_qs %}{{ extra_qs }}&{% endif %}{{ page_param|default:"page" }}={{ page_obj.previous_page_number }}{% if anchor %}#{{ anchor }}{% endif %}">&lsaquo; Prev</a>
+  {% endif %}
+  <span class="pagination-info">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}
+    <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="?{% if extra_qs %}{{ extra_qs }}&{% endif %}{{ page_param|default:"page" }}={{ page_obj.next_page_number }}{% if anchor %}#{{ anchor }}{% endif %}">Next &rsaquo;</a>
+    <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="?{% if extra_qs %}{{ extra_qs }}&{% endif %}{{ page_param|default:"page" }}={{ page_obj.paginator.num_pages }}{% if anchor %}#{{ anchor }}{% endif %}">Last &raquo;</a>
+  {% endif %}
+</div>
+{% endif %}

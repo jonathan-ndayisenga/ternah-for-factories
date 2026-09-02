@@ -1,24 +1,170 @@
 {% extends "base.html" %}
+{% block title %}Onboard a Factory{% endblock %}
 {% block content %}
-<div class="card" style="max-width:640px;margin:0 auto">
-  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Onboard a Factory</h2>
-  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">
-    One screen, five steps: tenant record → business admin → Factory Mode modules → tokens → handoff.
-    A "Factory" branch is created automatically for the production line.</p>
-  <form method="post" class="stack">{% csrf_token %}
-    <label>Factory name (brands the navbar, receipts and batch reports)</label>
-    <input name="name" required>
-    <label>Contact email</label><input name="contact_email" type="email" required>
-    <label>Contact phone</label><input name="contact_phone">
-    <label>Address</label><textarea name="address" rows="2"></textarea>
-    <label>Trial / paid period (days)</label><input name="period_days" type="number" value="30">
-    <label>Initial token balance (1 token = 1 month of a module)</label>
-    <input name="token_balance" type="number" value="0">
-    <hr style="margin:1rem 0;border:0;border-top:1px solid #EDF1F5">
-    <label>Business admin username (the manager you hand off to)</label>
-    <input name="admin_username" required>
-    <label>Temporary password</label><input name="admin_password" required>
-    <button class="btn" style="margin-top:1.2rem">Create factory & go live</button>
-  </form>
+<style>
+  .wizard-card { max-width: 620px; margin: 0 auto; background: var(--card); border-radius: 18px;
+                 box-shadow: var(--shadow-md); overflow: hidden; }
+  .wizard-head { padding: 1.4rem 1.6rem 0; }
+  .wizard-head h2 { color: var(--ternah-navy); margin-bottom: .2rem; }
+  .wizard-head p { color: var(--muted); font-size: .88rem; }
+  .wizard-progress { display: flex; gap: .4rem; padding: 1.1rem 1.6rem; }
+  .wizard-dot { flex: 1; height: 5px; border-radius: 3px; background: #E5EAF0; transition: background .2s; }
+  .wizard-dot.done, .wizard-dot.active { background: var(--ternah-blue); }
+  .wizard-body { padding: .2rem 1.6rem 1.6rem; }
+  .wizard-step { display: none; }
+  .wizard-step.active { display: block; animation: wizardIn .18s ease; }
+  @keyframes wizardIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .wizard-step-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .5px; font-weight: 700;
+                        color: var(--ternah-blue); margin-bottom: .6rem; }
+  .wizard-nav { display: flex; justify-content: space-between; gap: .6rem; margin-top: 1.4rem; }
+  .wizard-nav .btn { flex: 1; }
+  .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .6rem; margin-top: .4rem; }
+  .module-check { display: flex; align-items: center; gap: .5rem; background: var(--bg); border-radius: 10px;
+                   padding: .6rem .75rem; border: 1.5px solid transparent; cursor: pointer; font-size: .88rem;
+                   font-weight: 600; transition: border-color .15s; }
+  .module-check:has(input:checked) { border-color: var(--ternah-blue); background: #EAF1FE; }
+  .module-check input { width: auto; }
+  .expiry-preview { background: var(--bg); border-radius: 10px; padding: .8rem 1rem; margin-top: .7rem;
+                     font-size: .9rem; }
+  .expiry-preview strong { color: var(--ternah-navy); }
+  .review-list { list-style: none; font-size: .9rem; }
+  .review-list li { display: flex; justify-content: space-between; padding: .45rem 0; border-bottom: 1px solid #EDF1F5; }
+  .review-list li span:first-child { color: var(--muted); }
+</style>
+
+<div class="wizard-card">
+  <div class="wizard-head">
+    <h2>Onboard a Factory</h2>
+    <p>Four quick steps — business details, an admin login, the modules they get, and how long they've paid for.</p>
+  </div>
+  <div class="wizard-progress">
+    <div class="wizard-dot" data-dot="1"></div>
+    <div class="wizard-dot" data-dot="2"></div>
+    <div class="wizard-dot" data-dot="3"></div>
+    <div class="wizard-dot" data-dot="4"></div>
+  </div>
+
+  <div class="wizard-body">
+    {% if error %}<p style="color:var(--red);font-weight:600;margin-bottom:.8rem">{{ error }}</p>{% endif %}
+    <form method="post" class="stack" id="onboardForm" novalidate>
+      {% csrf_token %}
+
+      <div class="wizard-step active" data-step="1">
+        <div class="wizard-step-label">Step 1 — Business & Contact</div>
+        <label>Factory name <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(brands the navbar, receipts and batch reports)</span></label>
+        <input name="name" required>
+        <label>Contact email</label>
+        <input name="contact_email" type="email" required>
+        <label>Contact phone <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input name="contact_phone">
+        <label>Address <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <textarea name="address" rows="2"></textarea>
+        <div class="wizard-nav"><span></span><button type="button" class="btn" onclick="wizardNext()">Next</button></div>
+      </div>
+
+      <div class="wizard-step" data-step="2">
+        <div class="wizard-step-label">Step 2 — Admin Account</div>
+        <p style="color:var(--muted);font-size:.85rem;margin-bottom:.6rem">This is the manager the factory hands off to once onboarding is done. A "Factory" branch is created automatically for the production line.</p>
+        <label>Admin username</label>
+        <input name="admin_username" required>
+        <label>Temporary password</label>
+        <input name="admin_password" required>
+        <div class="wizard-nav">
+          <button type="button" class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="wizardBack()">Back</button>
+          <button type="button" class="btn" onclick="wizardNext()">Next</button>
+        </div>
+      </div>
+
+      <div class="wizard-step" data-step="3">
+        <div class="wizard-step-label">Step 3 — Modules</div>
+        <p style="color:var(--muted);font-size:.85rem;margin-bottom:.2rem">Only what's ticked here shows up in their sidebar.</p>
+        <div class="module-grid">
+          {% for m in modules %}
+          <label class="module-check">
+            <input type="checkbox" name="modules" value="{{ m.pk }}" checked>
+            {{ m.name }}
+          </label>
+          {% endfor %}
+        </div>
+        <div class="wizard-nav">
+          <button type="button" class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="wizardBack()">Back</button>
+          <button type="button" class="btn" onclick="wizardNext()">Next</button>
+        </div>
+      </div>
+
+      <div class="wizard-step" data-step="4">
+        <div class="wizard-step-label">Step 4 — Subscription Length</div>
+        <label>Months subscribed</label>
+        <input name="months" id="monthsInput" type="number" min="1" value="1" required oninput="updatePreview()">
+        <div class="expiry-preview">Active until <strong id="expiryPreview">—</strong></div>
+
+        <ul class="review-list" id="reviewList" style="margin-top:1.2rem"></ul>
+
+        <div class="wizard-nav">
+          <button type="button" class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="wizardBack()">Back</button>
+          <button class="btn" type="submit">Create factory & go live</button>
+        </div>
+      </div>
+    </form>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentStep = 1;
+const totalSteps = 4;
+
+function showStep(n) {
+  document.querySelectorAll(".wizard-step").forEach(s => s.classList.toggle("active", s.dataset.step == n));
+  document.querySelectorAll(".wizard-dot").forEach(d => {
+    const i = parseInt(d.dataset.dot);
+    d.classList.toggle("active", i === n);
+    d.classList.toggle("done", i < n);
+  });
+  currentStep = n;
+  if (n === totalSteps) updateReview();
+}
+
+function stepValid(n) {
+  const step = document.querySelector(`.wizard-step[data-step="${n}"]`);
+  const fields = step.querySelectorAll("input, textarea, select");
+  for (const f of fields) {
+    if (!f.checkValidity()) { f.reportValidity(); return false; }
+  }
+  return true;
+}
+
+function wizardNext() {
+  if (!stepValid(currentStep)) return;
+  if (currentStep < totalSteps) showStep(currentStep + 1);
+}
+function wizardBack() {
+  if (currentStep > 1) showStep(currentStep - 1);
+}
+
+function updatePreview() {
+  const months = parseInt(document.getElementById("monthsInput").value) || 0;
+  const el = document.getElementById("expiryPreview");
+  if (months <= 0) { el.textContent = "—"; return; }
+  const d = new Date();
+  d.setMonth(d.getMonth() + months);
+  el.textContent = d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+}
+
+function updateReview() {
+  const name = document.querySelector('[name="name"]').value || "—";
+  const admin = document.querySelector('[name="admin_username"]').value || "—";
+  const moduleCount = document.querySelectorAll('[name="modules"]:checked').length;
+  const months = document.getElementById("monthsInput").value || "0";
+  document.getElementById("reviewList").innerHTML = `
+    <li><span>Factory</span><span>${name}</span></li>
+    <li><span>Admin login</span><span>${admin}</span></li>
+    <li><span>Modules</span><span>${moduleCount} selected</span></li>
+    <li><span>Subscription</span><span>${months} month${months == 1 ? "" : "s"}</span></li>
+  `;
+}
+
+document.addEventListener("DOMContentLoaded", updatePreview);
+</script>
 {% endblock %}

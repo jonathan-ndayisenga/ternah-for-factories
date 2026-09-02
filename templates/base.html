@@ -142,6 +142,9 @@
     .pill.active { background: #D6EAD8; color: var(--green); }
     .pill.locked { background: #FADBD8; color: var(--red); }
     .pill.warning { background: #FDEBD0; color: var(--amber); }
+    .pagination { display: flex; align-items: center; justify-content: center; gap: .5rem;
+                  margin-top: 1rem; flex-wrap: wrap; }
+    .pagination-info { color: var(--muted); font-size: .85rem; font-weight: 600; padding: 0 .3rem; }
     form.stack label { display: block; font-size: .85rem; font-weight: 600; margin: .7rem 0 .25rem; }
     form.stack input, form.stack select, form.stack textarea {
       width: 100%; padding: .65rem .7rem; border: 1px solid #D7DEE6; border-radius: 10px;
@@ -319,7 +322,22 @@
           <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'journal' %}active{% endif %}"
              href="{% url 'finance:journal' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-            Journal
+            Activity
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'general_ledger' %}active{% endif %}"
+             href="{% url 'finance:general_ledger' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H4v-2a4 4 0 0 1 4-4h.5"/><path d="M4 6a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"/><path d="M8 8h9M8 12h9M8 16h5"/></svg>
+            General Ledger
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'financial_reports' %}active{% endif %}"
+             href="{% url 'finance:financial_reports' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-4"/></svg>
+            Financial Reports
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'expense_journal' %}active{% endif %}"
+             href="{% url 'finance:expense_journal' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Expense Journal
           </a>
           <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'payment_accounts' %}active{% endif %}"
              href="{% url 'finance:payment_accounts' %}">
@@ -359,6 +377,11 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 7.3 12 12l-8.5-4.7M12 22V12"/><path d="m20.5 16.7-8.5 4.7-8.5-4.7V7.3L12 2.6l8.5 4.7z"/></svg>
             Inventory
           </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_price_edit' %}active{% endif %}"
+             href="{% url 'production:product_list' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.9 6.26L21 9.27l-4.5 4.39L17.8 21 12 17.77 6.2 21l1.3-7.34L3 9.27l6.1-1.01z"/></svg>
+            Products & Pricing
+          </a>
           <a class="nav-link {% if request.resolver_match.namespace == 'manager' and request.resolver_match.url_name == 'approvals' %}active{% endif %}"
              href="{% url 'manager:approvals' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -386,7 +409,17 @@
           <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'journal' %}active{% endif %}"
              href="{% url 'finance:journal' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-            Journal
+            Activity
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'general_ledger' %}active{% endif %}"
+             href="{% url 'finance:general_ledger' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H4v-2a4 4 0 0 1 4-4h.5"/><path d="M4 6a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"/><path d="M8 8h9M8 12h9M8 16h5"/></svg>
+            General Ledger
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'expense_journal' %}active{% endif %}"
+             href="{% url 'finance:expense_journal' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Expense Journal
           </a>
           <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'payment_accounts' %}active{% endif %}"
              href="{% url 'finance:payment_accounts' %}">
@@ -395,34 +428,65 @@
           </a>
         {% elif request.user.role == "CASHIER" or request.user.role == "SALES_REP" %}
           <div class="nav-section-label">{{ request.user.get_role_display }}</div>
-          <a class="nav-link {% if request.resolver_match.namespace == 'sales' %}active{% endif %}"
+          <a class="nav-link {% if request.resolver_match.namespace == 'sales' and request.resolver_match.url_name != 'received_items' %}active{% endif %}"
              href="{% url 'sales:pos' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
             Point of Sale
           </a>
+          {% if request.user.role == "SALES_REP" %}
+          <a class="nav-link {% if request.resolver_match.url_name == 'received_items' %}active{% endif %}"
+             href="{% url 'sales:received_items' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/><path d="M3 3l7 7"/><path d="m21 3-9 9"/></svg>
+            Items Received
+          </a>
+          {% endif %}
         {% elif request.user.role == "PRODUCTION" %}
           <div class="nav-section-label">Production</div>
-          <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'raw_materials' or request.resolver_match.url_name == 'raw_material_create' or request.resolver_match.url_name == 'raw_material_purchase' or request.resolver_match.url_name == 'raw_material_movements' %}active{% endif %}"
-             href="{% url 'production:raw_materials' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v6H3z"/><path d="M3 9v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9"/><path d="M8 13h8"/></svg>
-            Raw Materials
+          <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'dashboard' %}active{% endif %}"
+             href="{% url 'production:dashboard' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V10M12 19V5M20 19v-6"/><path d="M3 19h18"/></svg>
+            Dashboard
           </a>
           <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'categories' %}active{% endif %}"
              href="{% url 'production:categories' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h7l2 2h9v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
             Categories
           </a>
-          <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'distributions' or request.resolver_match.url_name == 'distribution_create' %}active{% endif %}"
-             href="{% url 'production:distributions' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/><path d="M3 3l7 7M21 3l-7 7M3 21l7-7M21 21l-7-7"/></svg>
-            Distributions
-          </a>
           <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_create' or request.resolver_match.url_name == 'formula_edit' %}active{% endif %}"
              href="{% url 'production:product_list' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.9 6.26L21 9.27l-4.5 4.39L17.8 21 12 17.77 6.2 21l1.3-7.34L3 9.27l6.1-1.01z"/></svg>
             Products & Formulas
           </a>
-          <span class="nav-link disabled">Batches & QA — coming soon</span>
+          <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'raw_materials' or request.resolver_match.url_name == 'raw_material_create' or request.resolver_match.url_name == 'raw_material_purchase' or request.resolver_match.url_name == 'raw_material_movements' %}active{% endif %}"
+             href="{% url 'production:raw_materials' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v6H3z"/><path d="M3 9v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9"/><path d="M8 13h8"/></svg>
+            Raw Materials
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'batch_create' or request.resolver_match.url_name == 'batch_complete' %}active{% endif %}"
+             href="{% url 'production:batch_create' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 8.5V2"/><path d="M8.5 2h7M7 15h10"/></svg>
+            New Batch
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'processing' %}active{% endif %}"
+             href="{% url 'production:processing' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Processing
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'reports' and request.resolver_match.url_name == 'production_report' or request.resolver_match.url_name == 'production_batch_detail' %}active{% endif %}"
+             href="{% url 'reports:production_report' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            Batches & QA
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'distributions' or request.resolver_match.url_name == 'distribution_create' %}active{% endif %}"
+             href="{% url 'production:distributions' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/><path d="M3 3l7 7M21 3l-7 7M3 21l7-7M21 21l-7-7"/></svg>
+            Distributions
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'production' and request.resolver_match.url_name == 'stock_requests' %}active{% endif %}"
+             href="{% url 'production:stock_requests' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Stock Requests
+          </a>
         {% else %}
           <div class="nav-section-label">{{ request.user.get_role_display }}</div>
           <span class="nav-link disabled">Screens coming soon</span>

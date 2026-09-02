@@ -4,12 +4,18 @@ a debtor payment. Every sale records who it was sold to, cash or credit."""
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.core.paginator import Paginator
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from accounts.models import PRICE_TIERS
-from .models import Debtor, DebtorPayment, Expense, InventoryLocation, MomoAccount, Sale, SaleItem, StockItem, StockMovement
+from finance.services import post_debtor_payment, post_expense, post_sale
+from production.models import Distribution, DistributionLine
+from .models import (
+    BankAccount, Debtor, DebtorPayment, Expense, InventoryLocation,
+    MomoAccount, Sale, SaleItem, StockItem, StockMovement,
+)
 
 POS_ROLES = ("CASHIER", "SALES_REP")
 pos_required = user_passes_test(lambda u: u.is_authenticated and (u.role in POS_ROLES or u.role == "MANAGER"))
@@ -40,12 +46,23 @@ def _allowed_tiers(request):
     return request.user.allowed_tiers or []
 
 
+def _tier_available(product, tier):
+    if tier == "CUSTOM":
+        return product.custom_price_min is not None and product.custom_price_max is not None
+    return product.price_for_tier(tier) is not None
+
+
 @login_required
 @pos_required
 def pos(request):
     location = _pos_location(request)
     allowed_tiers = _allowed_tiers(request)
-    context = {"location": location, "tier_labels": dict(PRICE_TIERS), "allowed_tiers": allowed_tiers}
+    momo_accounts = MomoAccount.objects.filter(business=request.user.business, is_active=True)
+    bank_accounts = BankAccount.objects.filter(business=request.user.business, is_active=True)
+    context = {
+        "location": location, "tier_labels": dict(PRICE_TIERS), "allowed_tiers": allowed_tiers,
+        "momo_accounts": momo_accounts, "bank_accounts": bank_accounts,
+    }
     if location:
         today = timezone.localdate()
         today_sales = Sale.objects.filter(location=location, created_at__date=today).order_by("-created_at")
@@ -53,16 +70,35 @@ def pos(request):
         stock_items = StockItem.objects.filter(location=location, quantity__gt=0).select_related("product")
         # only offer products priced for at least one tier this seller is allowed to use
         sellable = []
+        product_data = {}
         for i in stock_items:
-            i.available_tiers = [t for t in allowed_tiers if i.product.price_for_tier(t) is not None]
-            if i.available_tiers:
-                sellable.append(i)
+            i.available_tiers = [t for t in allowed_tiers if _tier_available(i.product, t)]
+            if not i.available_tiers:
+                continue
+            sellable.append(i)
+            product_data[str(i.product_id)] = {
+                "prices": {t: float(i.product.price_for_tier(t)) for t in i.available_tiers if t != "CUSTOM"},
+                "custom_min": float(i.product.custom_price_min) if i.product.custom_price_min is not None else None,
+                "custom_max": float(i.product.custom_price_max) if i.product.custom_price_max is not None else None,
+            }
+        qd_base = request.GET.copy()
+        for key in ("sales_page", "debtors_page", "panel"):
+            qd_base.pop(key, None)
+        qd_sales = qd_base.copy(); qd_sales["panel"] = "sales"
+        qd_debtors = qd_base.copy(); qd_debtors["panel"] = "debtors"
+        sales_page = Paginator(today_sales, 15).get_page(request.GET.get("sales_page"))
+        debtors_page = Paginator(debtors, 15).get_page(request.GET.get("debtors_page"))
+
         context.update({
             "stock_items": sellable,
-            "today_sales": today_sales,
+            "product_data": product_data,
+            "sales_page_obj": sales_page,
+            "debtors_page_obj": debtors_page,
+            "sales_extra_qs": qd_sales.urlencode(),
+            "debtors_extra_qs": qd_debtors.urlencode(),
             "today_total": sum((s.total for s in today_sales), Decimal("0")),
-            "debtors": debtors,
-            "momo_accounts": MomoAccount.objects.filter(business=request.user.business, is_active=True),
+            "debtor_total": sum((d.balance() for d in debtors), Decimal("0")),
+            "open_panel": request.GET.get("panel", ""),
         })
     return render(request, "sales/pos.html", context)
 
@@ -81,10 +117,27 @@ def record_sale(request):
     if method == "CREDIT" and not customer_name:
         return redirect("sales:pos")   # can't track a debt with nobody's name on it
 
+    biz = request.user.business
+    momo_account = None
+    if method == "MOBILE_MONEY":
+        momo_account = MomoAccount.objects.filter(
+            pk=request.POST.get("momo_account"), business=biz, is_active=True).first()
+        if not momo_account:
+            return redirect("sales:pos")   # no mobile money account set up/selected — nothing to record against
+
+    bank_account = None
+    if method == "CARD":
+        bank_account = BankAccount.objects.filter(
+            pk=request.POST.get("bank_account"), business=biz, is_active=True).first()
+        if not bank_account:
+            return redirect("sales:pos")   # no bank account set up/selected — nothing to record against
+
     allowed = _allowed_tiers(request)
     lines, subtotal = [], Decimal("0")
-    for pid, qty, tier in zip(request.POST.getlist("product"), request.POST.getlist("quantity"),
-                              request.POST.getlist("tier")):
+    for pid, qty, tier, custom_price_raw in zip(
+        request.POST.getlist("product"), request.POST.getlist("quantity"),
+        request.POST.getlist("tier"), request.POST.getlist("custom_price"),
+    ):
         try:
             qty = int(qty)
         except (TypeError, ValueError):
@@ -94,9 +147,22 @@ def record_sale(request):
         item = StockItem.objects.filter(location=location, product_id=pid).select_related("product").first()
         if not item:
             continue
-        unit_price = item.product.price_for_tier(tier)
-        if unit_price is None:
-            continue   # not priced for this tier — nothing to sell it at
+
+        if tier == "CUSTOM":
+            cmin, cmax = item.product.custom_price_min, item.product.custom_price_max
+            if cmin is None or cmax is None:
+                continue   # custom pricing not configured for this product
+            try:
+                unit_price = Decimal(custom_price_raw)
+            except InvalidOperation:
+                continue
+            if unit_price < cmin or unit_price > cmax:
+                continue   # outside the manager's allowed range
+        else:
+            unit_price = item.product.price_for_tier(tier)
+            if unit_price is None:
+                continue   # not priced for this tier — nothing to sell it at
+
         qty = min(qty, item.quantity)
         if qty <= 0:
             continue
@@ -110,23 +176,19 @@ def record_sale(request):
     amount_paid, balance = subtotal, Decimal("0")
     if method == "CREDIT":
         debtor, _ = Debtor.objects.get_or_create(
-            business=request.user.business, location=location, name=customer_name,
+            business=biz, location=location, name=customer_name,
             defaults={"phone": request.POST.get("customer_phone", "").strip()},
         )
         amount_paid, balance = Decimal("0"), subtotal
 
-    momo_account = None
-    if method == "MOBILE_MONEY":
-        momo_account = MomoAccount.objects.filter(
-            pk=request.POST.get("momo_account"), business=request.user.business, is_active=True).first()
-
     seq = Sale.objects.filter(location=location, created_at__date=timezone.localdate()).count() + 1
     receipt = f"RCP-{timezone.localdate():%d%m%y}-{location.id}{seq:03d}"
     sale = Sale.objects.create(
-        business=request.user.business, location=location, receipt_number=receipt,
+        business=biz, location=location, receipt_number=receipt,
         served_by=request.user, acted_as=_acting_role(request) if request.user.role == "MANAGER" else "",
         payment_method=method, customer_name=customer_name,
-        customer_phone=request.POST.get("customer_phone", "").strip(), paid_into_momo=momo_account,
+        customer_phone=request.POST.get("customer_phone", "").strip(),
+        paid_into_momo=momo_account, paid_into_bank=bank_account,
         debtor=debtor, subtotal=subtotal, total=subtotal, amount_paid=amount_paid, balance=balance,
     )
     for item, qty, unit_price, line_total in lines:
@@ -136,6 +198,7 @@ def record_sale(request):
         item.save(update_fields=["quantity"])
         StockMovement.objects.create(location=location, product=item.product, quantity=-qty,
                                      reason="SALE", reference=receipt)
+    post_sale(sale)
     return redirect("sales:pos")
 
 
@@ -150,10 +213,34 @@ def record_expense(request):
         except InvalidOperation:
             amount = None
         if category and amount and amount > 0:
-            Expense.objects.create(business=request.user.business, location=location, category=category,
-                                   amount=amount, note=request.POST.get("note", "").strip(),
-                                   date=timezone.localdate(), recorded_by=request.user)
+            expense = Expense.objects.create(
+                business=request.user.business, location=location, category=category,
+                amount=amount, note=request.POST.get("note", "").strip(),
+                date=timezone.localdate(), recorded_by=request.user)
+            post_expense(expense)
     return redirect("sales:pos")
+
+
+@login_required
+@pos_required
+def received_items(request):
+    """A rep's own view of what's landed in their inventory over time — date,
+    product, quantity, and the price they're meant to sell it at (their
+    manager-assigned tiers, priced per the manager's product pricing)."""
+    location = _pos_location(request)
+    allowed = _allowed_tiers(request)
+    lines = []
+    if location:
+        lines = list(DistributionLine.objects.filter(distribution__receiver_location=location,
+                                                      distribution__status="RECEIVED")
+                     .select_related("product", "distribution").order_by("-distribution__date"))
+        for line in lines:
+            line.your_prices = [
+                (label, line.product.price_for_tier(code))
+                for code, label in PRICE_TIERS
+                if code in allowed and code != "CUSTOM" and line.product.price_for_tier(code) is not None
+            ]
+    return render(request, "sales/received_items.html", {"location": location, "lines": lines})
 
 
 @login_required
@@ -181,7 +268,8 @@ def record_payment(request):
     except InvalidOperation:
         amount = None
     if debtor and amount and amount > 0:
-        DebtorPayment.objects.create(debtor=debtor, amount=amount, method="CASH", received_by=request.user)
+        payment = DebtorPayment.objects.create(debtor=debtor, amount=amount, method="CASH", received_by=request.user)
+        post_debtor_payment(payment)
         remaining = amount
         for open_sale in debtor.sales.filter(balance__gt=0).order_by("created_at"):
             if remaining <= 0:

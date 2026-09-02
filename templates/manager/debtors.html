@@ -7,7 +7,7 @@
 <div class="table-scroll">
 <table class="list">
   <tr><th>Name</th><th>Phone</th><th>Location</th><th>Balance</th><th>Age</th><th>Record payment</th><th></th></tr>
-  {% for row in rows %}
+  {% for row in page_obj %}
   <tr>
     <td><strong>{{ row.debtor.name }}</strong></td>
     <td>{{ row.debtor.phone|default:"—" }}</td>
@@ -32,4 +32,5 @@
   {% empty %}<tr><td colspan="7" style="color:var(--muted)">No outstanding debtors at your branch.</td></tr>{% endfor %}
 </table>
 </div>
+{% include "partials/pagination.html" %}
 {% endblock %}

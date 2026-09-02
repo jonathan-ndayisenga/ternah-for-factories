@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Financial Reports{% endblock %}
+{% block content %}
+<style>
+  .tab-toggle { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+  .tab-bar { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .tab-bar label { cursor: pointer; padding: .6rem 1.1rem; border-radius: 10px; font-weight: 700;
+                    font-size: .88rem; background: var(--card); box-shadow: var(--shadow-sm); color: var(--muted); }
+  .report-section { display: none; }
+  #tab-trial:checked ~ .report-section[data-tab="trial"],
+  #tab-pl:checked ~ .report-section[data-tab="pl"],
+  #tab-bs:checked ~ .report-section[data-tab="bs"],
+  #tab-rev:checked ~ .report-section[data-tab="rev"] { display: block; }
+  #tab-trial:checked ~ .tab-bar label[for="tab-trial"],
+  #tab-pl:checked ~ .tab-bar label[for="tab-pl"],
+  #tab-bs:checked ~ .tab-bar label[for="tab-bs"],
+  #tab-rev:checked ~ .tab-bar label[for="tab-rev"] { background: var(--ternah-navy); color: #fff; }
+  .statement-line { display: flex; justify-content: space-between; padding: .5rem 0; border-bottom: 1px solid #EDF1F5; }
+  .statement-line.total { border-top: 2px solid var(--ternah-navy); border-bottom: none; font-weight: 800;
+                           margin-top: .3rem; padding-top: .7rem; }
+  .statement-line .amount { font-weight: 700; }
+  .statement-section-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .5px;
+                              color: var(--muted); font-weight: 700; margin: 1.1rem 0 .4rem; }
+  .statement-section-label:first-child { margin-top: 0; }
+  @media print {
+    .report-section { display: block !important; margin-bottom: 1.5rem; page-break-inside: avoid; }
+    .tab-bar, .no-print { display: none !important; }
+  }
+</style>
+
+<div class="page-head no-print">
+  <h2>Financial Reports</h2>
+  <span class="spacer"></span>
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+<div class="print-only print-masthead">
+  <h1>{{ request.user.business.name }}</h1>
+  <p>Financial Reports — generated {% now "d M Y, H:i" %}</p>
+</div>
+
+<form method="get" class="no-print" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
+  <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">Trial Balance / P&amp;L from</label>
+    <input name="from" type="date" value="{{ date_from }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
+  <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">to</label>
+    <input name="to" type="date" value="{{ date_to }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
+  <button class="btn">Apply</button>
+  {% if date_from or date_to %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'finance:financial_reports' %}">All time</a>{% endif %}
+  <span style="color:var(--muted);font-size:.82rem;align-self:center">Balance Sheet is always as of today — it's a snapshot, not a range.</span>
+</form>
+
+<input type="radio" name="report-tab" id="tab-trial" class="tab-toggle" checked>
+<input type="radio" name="report-tab" id="tab-pl" class="tab-toggle">
+<input type="radio" name="report-tab" id="tab-bs" class="tab-toggle">
+<input type="radio" name="report-tab" id="tab-rev" class="tab-toggle">
+<div class="tab-bar no-print">
+  <label for="tab-trial">Trial Balance</label>
+  <label for="tab-pl">Profit &amp; Loss</label>
+  <label for="tab-bs">Balance Sheet</label>
+  <label for="tab-rev">Revenue by Product</label>
+</div>
+
+<div class="report-section" data-tab="trial">
+  <div class="card">
+    <h3>Trial Balance{% if date_from or date_to %} — {{ date_from|default:"inception" }} to {{ date_to|default:"today" }}{% endif %}</h3>
+    <div class="table-scroll" style="margin-top:.5rem">
+    <table class="list">
+      <tr><th>Code</th><th>Account</th><th>Debit</th><th>Credit</th></tr>
+      {% for row in trial_rows %}
+      <tr>
+        <td>{{ row.account.code }}</td>
+        <td>{{ row.account.name }}</td>
+        <td>{% if row.debit %}UGX {{ row.debit|floatformat:0 }}{% endif %}</td>
+        <td>{% if row.credit %}UGX {{ row.credit|floatformat:0 }}{% endif %}</td>
+      </tr>
+      {% empty %}<tr><td colspan="4" style="color:var(--muted)">Nothing posted in this range.</td></tr>{% endfor %}
+      <tr style="font-weight:800;background:var(--bg)">
+        <td colspan="2">Total</td>
+        <td>UGX {{ total_debit|floatformat:0 }}</td>
+        <td>UGX {{ total_credit|floatformat:0 }}</td>
+      </tr>
+    </table>
+    </div>
+    {% if total_debit == total_credit %}
+      <p style="color:var(--green);font-weight:600;margin-top:.6rem;font-size:.9rem">Balanced — debits equal credits.</p>
+    {% else %}
+      <p style="color:var(--red);font-weight:600;margin-top:.6rem;font-size:.9rem">Out of balance — this should never happen; check for a data issue.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="report-section" data-tab="pl">
+  <div class="card" style="max-width:520px">
+    <h3>Profit &amp; Loss{% if date_from or date_to %} — {{ date_from|default:"inception" }} to {{ date_to|default:"today" }}{% endif %}</h3>
+    <div class="statement-line"><span>Sales Revenue</span><span class="amount">UGX {{ revenue|floatformat:0 }}</span></div>
+    <div class="statement-line"><span>Cost of Goods Sold</span><span class="amount" style="color:var(--red)">(UGX {{ cogs|floatformat:0 }})</span></div>
+    <div class="statement-line total"><span>Gross Profit</span><span class="amount">UGX {{ gross_profit|floatformat:0 }}</span></div>
+    <div class="statement-line" style="margin-top:.6rem"><span>Operating Expenses</span><span class="amount" style="color:var(--red)">(UGX {{ opex|floatformat:0 }})</span></div>
+    <div class="statement-line total"><span>Net Profit</span>
+      <span class="amount" style="color:{% if net_profit >= 0 %}var(--green){% else %}var(--red){% endif %}">UGX {{ net_profit|floatformat:0 }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="report-section" data-tab="bs">
+  <div class="grid charts-2">
+    <div class="card">
+      <h3>Balance Sheet — Assets</h3>
+      <div class="statement-section-label">Current Assets</div>
+      <div class="statement-line"><span>Cash on Hand</span><span class="amount">UGX {{ cash|floatformat:0 }}</span></div>
+      <div class="statement-line"><span>Mobile Money</span><span class="amount">UGX {{ momo|floatformat:0 }}</span></div>
+      <div class="statement-line"><span>Bank</span><span class="amount">UGX {{ bank|floatformat:0 }}</span></div>
+      <div class="statement-line"><span>Accounts Receivable</span><span class="amount">UGX {{ receivable|floatformat:0 }}</span></div>
+      <div class="statement-section-label">Inventory</div>
+      <div class="statement-line"><span>Raw Materials</span><span class="amount">UGX {{ rm_inventory|floatformat:0 }}</span></div>
+      <div class="statement-line"><span>Finished Goods</span><span class="amount">UGX {{ fg_inventory|floatformat:0 }}</span></div>
+      <div class="statement-line total"><span>Total Assets</span><span class="amount">UGX {{ total_assets|floatformat:0 }}</span></div>
+    </div>
+    <div class="card">
+      <h3>Liabilities &amp; Equity</h3>
+      <div class="statement-section-label">Liabilities</div>
+      <div class="statement-line"><span>Accounts Payable</span><span class="amount">UGX {{ payable|floatformat:0 }}</span></div>
+      <div class="statement-section-label">Equity</div>
+      <div class="statement-line"><span>Owner's Capital</span><span class="amount">UGX {{ capital|floatformat:0 }}</span></div>
+      <div class="statement-line"><span>Retained Earnings</span><span class="amount">UGX {{ retained_earnings|floatformat:0 }}</span></div>
+      <div class="statement-line total"><span>Total Liabilities &amp; Equity</span><span class="amount">UGX {{ total_liabilities_equity|floatformat:0 }}</span></div>
+    </div>
+  </div>
+
+  <div class="card no-print" style="max-width:420px;margin-top:1rem">
+    <h3>Record Owner Capital</h3>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:.6rem">Money the owner puts into the business (or draws back out) — the only way Cash/Bank carries a balance with no sale behind it.</p>
+    <form method="post" action="{% url 'finance:record_capital' %}" class="stack">
+      {% csrf_token %}
+      <label>Direction</label>
+      <select name="direction">
+        <option value="deposit">Deposit into the business</option>
+        <option value="withdraw">Withdraw from the business</option>
+      </select>
+      <label>Into</label>
+      <select name="into">
+        <option value="cash">Cash on Hand</option>
+        <option value="bank">Bank</option>
+      </select>
+      <label>Amount (UGX)</label>
+      <input name="amount" type="number" min="1" required>
+      <label>Note <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input name="memo" placeholder="e.g. Initial capital, personal top-up">
+      <button class="btn" style="margin-top:.8rem;width:100%">Record</button>
+    </form>
+  </div>
+</div>
+
+<div class="report-section" data-tab="rev">
+  <div class="card">
+    <h3>Revenue by Product{% if date_from or date_to %} — {{ date_from|default:"inception" }} to {{ date_to|default:"today" }}{% endif %}</h3>
+    <div class="table-scroll" style="margin-top:.5rem">
+    <table class="list">
+      <tr><th>Product</th><th>Units Sold</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Margin</th></tr>
+      {% for r in product_rows %}
+      <tr>
+        <td><strong>{{ r.product__name }}</strong></td>
+        <td>{{ r.qty }}</td>
+        <td>UGX {{ r.revenue|floatformat:0 }}</td>
+        <td>UGX {{ r.cost|floatformat:0 }}</td>
+        <td style="color:{% if r.profit >= 0 %}var(--green){% else %}var(--red){% endif %};font-weight:700">UGX {{ r.profit|floatformat:0 }}</td>
+        <td>{{ r.margin_pct|floatformat:1 }}%</td>
+      </tr>
+      {% empty %}<tr><td colspan="6" style="color:var(--muted)">No sales in this range.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

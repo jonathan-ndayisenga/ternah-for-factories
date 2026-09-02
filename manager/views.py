@@ -3,6 +3,7 @@ the owner: no models of its own, just a branch-locked lens over Product
 (production), Sale/Debtor/PendingAction/StockItem (sales). Every query here
 is scoped to request.user.branch — a manager never sees another branch."""
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.core.paginator import Paginator
 from django.db.models import F
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -47,7 +48,8 @@ def debtors(request):
         age_days = (today - oldest.created_at.date()).days if oldest else 0
         rows.append({"debtor": d, "balance": balance, "age_days": age_days})
     rows.sort(key=lambda r: -r["age_days"])
-    return render(request, "manager/debtors.html", {"rows": rows})
+    page_obj = Paginator(rows, 25).get_page(request.GET.get("page"))
+    return render(request, "manager/debtors.html", {"page_obj": page_obj})
 
 
 @login_required
