@@ -2,13 +2,16 @@
 {% block title %}Products & Pricing{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h2>Products & Pricing</h2>
+  <h2>Products{% if request.user.role == "OWNER" or request.user.role == "MANAGER" %} & Pricing{% endif %}</h2>
   <span class="spacer"></span>
   {% if awaiting_count %}<span class="pill warning">{{ awaiting_count }} awaiting pricing</span>{% endif %}
+  {% if request.user.role == "OWNER" or request.user.role == "PRODUCTION" %}
+    <a class="btn" href="{% url 'production:product_create' %}">+ Add Product</a>
+  {% endif %}
 </div>
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Product</th><th>Category</th><th>Status</th><th>Cost (latest)</th><th>Retail</th><th>Wholesale</th><th>Distribution</th><th>Custom</th><th></th></tr>
+  <tr><th>Product</th><th>Category</th><th>Status</th><th>Cost (latest)</th><th>Retail</th><th>Wholesale</th><th>Distribution</th><th>Custom</th><th></th><th></th></tr>
   {% for p in products %}
   <tr>
     <td><strong>{{ p.name }}</strong>{% if p.pack_size %}<br><span style="color:var(--muted);font-size:.8rem">{{ p.pack_size }}</span>{% endif %}</td>
@@ -23,9 +26,18 @@
     <td>{% if p.wholesale_price %}UGX {{ p.wholesale_price|floatformat:0 }}{% else %}—{% endif %}</td>
     <td>{% if p.distribution_price %}UGX {{ p.distribution_price|floatformat:0 }}{% else %}—{% endif %}</td>
     <td>{% if p.custom_price %}UGX {{ p.custom_price|floatformat:0 }}{% else %}—{% endif %}</td>
-    <td><a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:product_price_edit' p.pk %}">{% if p.status == "DRAFT" %}Price it{% else %}Edit prices{% endif %}</a></td>
+    <td>
+      {% if request.user.role == "OWNER" or request.user.role == "MANAGER" %}
+        <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:product_price_edit' p.pk %}">{% if p.status == "DRAFT" %}Price it{% else %}Edit prices{% endif %}</a>
+      {% endif %}
+    </td>
+    <td>
+      {% if request.user.role == "OWNER" or request.user.role == "PRODUCTION" %}
+        <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:formula_edit' p.pk %}">Formula</a>
+      {% endif %}
+    </td>
   </tr>
-  {% empty %}<tr><td colspan="9" style="color:var(--muted)">No products yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="10" style="color:var(--muted)">No products yet.</td></tr>{% endfor %}
 </table>
 </div>
 {% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Raw Materials{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Raw Materials</h2>
+  <span class="spacer"></span>
+  <a class="btn" href="{% url 'production:raw_material_create' %}">+ New Material</a>
+</div>
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Material</th><th>Unit</th><th>Stock on hand</th><th>Reorder level</th><th>Latest unit cost</th><th>Status</th><th></th></tr>
+  {% for m in materials %}
+  <tr>
+    <td><strong>{{ m.name }}</strong></td>
+    <td>{{ m.unit_of_measure }}</td>
+    <td>{{ m.stock|floatformat:3 }}</td>
+    <td>{{ m.reorder_level|floatformat:3 }}</td>
+    <td>UGX {{ m.cost|floatformat:4 }}</td>
+    <td>{% if m.low %}<span class="pill locked">Reorder</span>{% else %}<span class="pill active">OK</span>{% endif %}</td>
+    <td style="display:flex;gap:.4rem">
+      <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.4rem .6rem;min-height:auto" href="{% url 'production:raw_material_purchase' m.pk %}">Record purchase</a>
+      <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.4rem .6rem;min-height:auto" href="{% url 'production:raw_material_movements' m.pk %}">Movements</a>
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="7" style="color:var(--muted)">No raw materials yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

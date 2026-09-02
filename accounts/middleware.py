@@ -1,7 +1,6 @@
 """Manager view switcher. active_view lives in the session; only managers
 may set it to something other than their own role. Every write elsewhere
 should record acted_as = request.active_view for audit."""
-from .models import VIEWS
 
 
 class ActiveViewMiddleware:
@@ -15,6 +14,10 @@ class ActiveViewMiddleware:
             view = request.session.get("active_view", default)
             if user.role != "MANAGER":
                 view = default                      # only managers switch
+            elif view != default and view not in user.switchable_views():
+                # the module backing this view (e.g. PRODUCTION) may have been
+                # revoked since they switched — don't honor a stale session
+                view = default
             request.active_view = view
         else:
             request.active_view = None

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Categories</h2>
+</div>
+
+{% if error %}<div class="card" style="margin-bottom:1rem;border:1px solid #F5C2C0;background:#FDECEA;color:var(--red);font-weight:600">{{ error }}</div>{% endif %}
+
+<div class="grid charts-2">
+  <div class="card">
+    <h3>All Categories</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Name</th><th>Products</th><th></th></tr>
+      {% for c in categories %}
+      <tr>
+        <td>
+          <form method="post" style="display:flex;gap:.4rem" action="{% url 'production:categories' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="rename">
+            <input type="hidden" name="category_id" value="{{ c.pk }}">
+            <input name="new_name" value="{{ c.name }}" style="width:160px;padding:.35rem .5rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">
+            <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.35rem .6rem;min-height:auto">Rename</button>
+          </form>
+        </td>
+        <td>{{ c.product_count }}</td>
+        <td>
+          <form method="post" action="{% url 'production:categories' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="category_id" value="{{ c.pk }}">
+            <button class="btn ghost" style="background:#FADBD8;color:var(--red);padding:.35rem .6rem;min-height:auto">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}<tr><td colspan="3" style="color:var(--muted)">No categories yet.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Add Category</h3>
+    <form method="post" action="{% url 'production:categories' %}" class="stack">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create">
+      <label>Name</label>
+      <input name="name" required placeholder="e.g. Petroleum Jelly">
+      <button class="btn" style="margin-top:1rem">Add category</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

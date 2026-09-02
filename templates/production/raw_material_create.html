@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}New Raw Material{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.5rem">New Raw Material</h2>
+  <form method="post" class="stack">
+    {% csrf_token %}
+    <label>Name</label>
+    <input name="name" required placeholder="e.g. Petroleum Jelly Base">
+    <label>Unit of measure</label>
+    <select name="unit_of_measure" required>
+      {% for code, label in uom_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
+    <label>Reorder level</label>
+    <input name="reorder_level" type="number" step="0.001" min="0" value="0">
+    <button class="btn" style="margin-top:1.2rem">Create material</button>
+  </form>
+</div>
+{% endblock %}

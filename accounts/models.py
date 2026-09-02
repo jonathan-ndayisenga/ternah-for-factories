@@ -32,6 +32,21 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.username} ({self.get_role_display()})"
 
+    def switchable_views(self):
+        """Which views a manager may switch into. Manager/Cashier are the
+        base capability, always available; Production/Sales Rep are extra
+        privileges gated on the matching module actually being assigned —
+        not automatic just because the manager role can switch at all."""
+        if self.role != "MANAGER":
+            return []
+        views = ["MANAGER", "CASHIER"]
+        codes = set(self.modules.values_list("code", flat=True))
+        if "PRODUCTION" in codes:
+            views.append("PRODUCTION")
+        if "SALES" in codes:
+            views.append("SALES_REP")
+        return views
+
 
 VIEWS = ["MANAGER", "CASHIER", "PRODUCTION", "SALES_REP"]
 PRICE_TIERS = [("RETAIL", "Retail"), ("WHOLESALE", "Wholesale"),

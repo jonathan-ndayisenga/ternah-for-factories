@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}New Product{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">New Product</h2>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Born in Draft — visible and producible, but can't be distributed until it's priced.</p>
+  <form method="post" class="stack">
+    {% csrf_token %}
+    <label>Category</label>
+    <select name="category" required>
+      {% for c in categories %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
+    </select>
+    <label>Name</label>
+    <input name="name" required placeholder="e.g. Body Oil 50ml">
+    <label>Pack size <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input name="pack_size" placeholder="e.g. 50 ml">
+    <label>SKU <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input name="sku">
+    <button class="btn" style="margin-top:1.2rem">Create product</button>
+  </form>
+</div>
+{% endblock %}
