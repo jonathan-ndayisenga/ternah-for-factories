@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Add User{% endblock %}
+{% block content %}
+<div class="card" style="max-width:560px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Add a User</h2>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">
+    {% if branches %}
+      Choose a role, a branch, and which modules they can open.
+    {% else %}
+      New staff join your branch — {{ request.user.branch.name }}.
+    {% endif %}
+  </p>
+  <form method="post" class="stack">{% csrf_token %}
+    <label>Username</label>
+    <input name="username" required>
+    <label>Temporary password</label>
+    <input name="password" type="password" required>
+    <label>Full name</label>
+    <div style="display:flex;gap:.6rem">
+      <input name="first_name" placeholder="First name" style="flex:1">
+      <input name="last_name" placeholder="Last name" style="flex:1">
+    </div>
+    <label>Phone</label>
+    <input name="phone">
+    <label>Role</label>
+    <select name="role" required>
+      {% for code, label in role_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
+    {% if branches %}
+      <label>Branch</label>
+      <select name="branch" required>
+        {% for b in branches %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+      </select>
+    {% endif %}
+    <label>Module access</label>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.3rem">
+      {% for m in available_modules %}
+        <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
+                      background:var(--bg);border:1px solid #D7DEE6;border-radius:8px;
+                      padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer">
+          <input type="checkbox" name="modules" value="{{ m.id }}" style="width:auto">{{ m.name }}
+        </label>
+      {% empty %}
+        <span style="color:var(--muted);font-size:.85rem">No modules subscribed yet.</span>
+      {% endfor %}
+    </div>
+
+    <label>Sell-price tiers <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(Cashier / Sales Rep only)</span></label>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.3rem">
+      {% for code, label in tier_choices %}
+        <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
+                      background:var(--bg);border:1px solid #D7DEE6;border-radius:8px;
+                      padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer">
+          <input type="checkbox" name="allowed_tiers" value="{{ code }}" style="width:auto">{{ label }}
+        </label>
+      {% endfor %}
+    </div>
+
+    <label>Permissions</label>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.3rem">
+      <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
+                    background:var(--bg);border:1px solid #D7DEE6;border-radius:8px;
+                    padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer">
+        <input type="checkbox" name="can_swap" style="width:auto">Can swap without approval
+      </label>
+      <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
+                    background:var(--bg);border:1px solid #D7DEE6;border-radius:8px;
+                    padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer">
+        <input type="checkbox" name="can_refund" style="width:auto">Can refund without approval
+      </label>
+    </div>
+
+    <button class="btn" style="margin-top:1.2rem">Create user</button>
+  </form>
+</div>
+{% endblock %}

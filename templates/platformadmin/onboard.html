@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Onboard a Factory</h2>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">
+    One screen, five steps: tenant record → business admin → Factory Mode modules → tokens → handoff.
+    A "Factory" branch is created automatically for the production line.</p>
+  <form method="post" class="stack">{% csrf_token %}
+    <label>Factory name (brands the navbar, receipts and batch reports)</label>
+    <input name="name" required>
+    <label>Contact email</label><input name="contact_email" type="email" required>
+    <label>Contact phone</label><input name="contact_phone">
+    <label>Address</label><textarea name="address" rows="2"></textarea>
+    <label>Trial / paid period (days)</label><input name="period_days" type="number" value="30">
+    <label>Initial token balance (1 token = 1 month of a module)</label>
+    <input name="token_balance" type="number" value="0">
+    <hr style="margin:1rem 0;border:0;border-top:1px solid #EDF1F5">
+    <label>Business admin username (the manager you hand off to)</label>
+    <input name="admin_username" required>
+    <label>Temporary password</label><input name="admin_password" required>
+    <button class="btn" style="margin-top:1.2rem">Create factory & go live</button>
+  </form>
+</div>
+{% endblock %}

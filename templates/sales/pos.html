@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Point of Sale{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>{% if location %}{{ location.branch.name }}{% else %}Point of Sale{% endif %}</h2>
+  <span class="spacer"></span>
+  {% if location %}<span class="pill active">Today: UGX {{ today_total|floatformat:0 }} · {{ today_sales|length }} sale{{ today_sales|length|pluralize }}</span>{% endif %}
+</div>
+
+{% if not location %}
+<div class="card"><p style="color:var(--muted)">No inventory location is set up for you yet — ask your owner or manager to get one connected to your branch.</p></div>
+{% else %}
+
+<div class="grid charts-2">
+  <div class="card">
+    <h3>New Sale</h3>
+    <form method="post" action="{% url 'sales:record_sale' %}" class="stack">
+      {% csrf_token %}
+      {{ tier_labels|json_script:"tierLabels" }}
+      <div id="cartRows">
+        <div class="cart-row">
+          <select name="product" class="cart-product" required onchange="syncTierOptions(this)">
+            <option value="">Select product…</option>
+            {% for item in stock_items %}
+              <option value="{{ item.product_id }}" data-tiers="{{ item.available_tiers|join:',' }}">{{ item.product.name }} ({{ item.quantity }} in stock)</option>
+            {% endfor %}
+          </select>
+          <select name="tier" class="cart-tier" required></select>
+          <input type="number" name="quantity" min="1" value="1" required>
+          <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
+        </div>
+      </div>
+      <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addCartRow()">+ Add item</button>
+
+      <label>Payment method</label>
+      <select name="payment_method" id="paymentMethod" required onchange="toggleCustomerRequired(); toggleMomoAccount();">
+        <option value="CASH">Cash</option>
+        <option value="MOBILE_MONEY">Mobile Money</option>
+        <option value="CARD">Card</option>
+        <option value="CREDIT">Credit</option>
+      </select>
+
+      <div id="momoAccountField" style="display:none">
+        <label>Into which MoMo account?</label>
+        <select name="momo_account" id="momoAccount">
+          {% for a in momo_accounts %}<option value="{{ a.id }}">{{ a.provider }} — {{ a.number }}</option>{% endfor %}
+        </select>
+      </div>
+
+      <label>Customer name <span id="customerHint" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input name="customer_name" id="customerName" placeholder="Who are you selling to?">
+      <label>Customer phone <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input name="customer_phone">
+
+      <button class="btn" style="margin-top:1rem;width:100%" type="submit">Record sale</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Today's Sales</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Time</th><th>Customer</th><th>Method</th><th>Total</th></tr>
+      {% for s in today_sales %}
+      <tr>
+        <td>{{ s.created_at|date:"H:i" }}</td>
+        <td>{{ s.customer_name|default:"—" }}</td>
+        <td>{{ s.get_payment_method_display }}</td>
+        <td>UGX {{ s.total|floatformat:0 }}</td>
+      </tr>
+      {% empty %}<tr><td colspan="4" style="color:var(--muted)">No sales yet today.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+</div>
+
+<div class="grid charts-2" style="margin-top:1rem">
+  <div class="card">
+    <h3>Record an Expense</h3>
+    <form method="post" action="{% url 'sales:record_expense' %}" class="stack">
+      {% csrf_token %}
+      <label>Category</label>
+      <input name="category" required placeholder="e.g. Transport, Airtime">
+      <label>Amount (UGX)</label>
+      <input name="amount" type="number" min="1" required>
+      <label>Note <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input name="note">
+      <button class="btn" style="margin-top:1rem">Record expense</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Debtors — money owed to you</h3>
+    {% if debtors %}
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Name</th><th>Balance</th><th>Record payment</th></tr>
+      {% for d in debtors %}
+      <tr>
+        <td>{{ d.name }}{% if d.phone %}<br><span style="color:var(--muted);font-size:.8rem">{{ d.phone }}</span>{% endif %}</td>
+        <td>UGX {{ d.balance|floatformat:0 }}</td>
+        <td>
+          <form method="post" action="{% url 'sales:record_payment' %}" style="display:flex;gap:.4rem">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'sales:pos' %}">
+            <input type="hidden" name="debtor_id" value="{{ d.id }}">
+            <input name="amount" type="number" min="1" style="width:100px;padding:.4rem .6rem;border:1px solid #D7DEE6;border-radius:8px" required>
+            <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">Pay</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+    {% else %}
+      <p style="color:var(--muted);font-size:.9rem">No outstanding debtors.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function syncTierOptions(productSelect) {
+  const row = productSelect.closest(".cart-row");
+  const tierSelect = row.querySelector(".cart-tier");
+  const labels = JSON.parse(document.getElementById("tierLabels").textContent);
+  const opt = productSelect.selectedOptions[0];
+  const tiers = opt && opt.dataset.tiers ? opt.dataset.tiers.split(",").filter(Boolean) : [];
+  tierSelect.innerHTML = tiers.map(t => `<option value="${t}">${labels[t] || t}</option>`).join("");
+}
+function addCartRow() {
+  const rows = document.getElementById("cartRows");
+  const row = rows.firstElementChild.cloneNode(true);
+  row.querySelector(".cart-product").selectedIndex = 0;
+  row.querySelector(".cart-tier").innerHTML = "";
+  row.querySelector("input[type=number]").value = "1";
+  rows.appendChild(row);
+}
+function removeCartRow(btn) {
+  const rows = document.getElementById("cartRows");
+  if (rows.children.length > 1) btn.closest(".cart-row").remove();
+}
+function toggleCustomerRequired() {
+  const isCredit = document.getElementById("paymentMethod").value === "CREDIT";
+  document.getElementById("customerName").required = isCredit;
+  document.getElementById("customerHint").textContent = isCredit ? "(needed to track the debt)" : "(optional)";
+}
+function toggleMomoAccount() {
+  const isMomo = document.getElementById("paymentMethod").value === "MOBILE_MONEY";
+  document.getElementById("momoAccountField").style.display = isMomo ? "block" : "none";
+}
+</script>
+{% endblock %}

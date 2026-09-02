@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}New Distribution{% endblock %}
+{% block content %}
+<div class="card" style="max-width:560px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Send Stock</h2>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Only priced (active) products can be distributed — draft products aren't offered below.</p>
+  <form method="post" class="stack">
+    {% csrf_token %}
+    <label>Send to</label>
+    <select name="location" required>
+      {% for loc in locations %}
+        <option value="{{ loc.id }}">{{ loc.branch.name }} — {{ loc.rep.username|default:loc.get_type_display }}</option>
+      {% endfor %}
+    </select>
+
+    <div id="cartRows">
+      <div class="cart-row" style="margin-top:1rem">
+        <select name="product" required>
+          <option value="">Select product…</option>
+          {% for p in active_products %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select>
+        <input type="number" name="quantity" min="1" value="1" required>
+        <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
+      </div>
+    </div>
+    <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addCartRow()">+ Add item</button>
+
+    <button class="btn" style="margin-top:1.2rem;width:100%">Send</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addCartRow() {
+  const rows = document.getElementById("cartRows");
+  const row = rows.firstElementChild.cloneNode(true);
+  row.querySelectorAll("select, input").forEach(el => { if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "1"; });
+  rows.appendChild(row);
+}
+function removeCartRow(btn) {
+  const rows = document.getElementById("cartRows");
+  if (rows.children.length > 1) btn.closest(".cart-row").remove();
+}
+</script>
+{% endblock %}

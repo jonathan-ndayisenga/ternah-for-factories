@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ debtor.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>{{ debtor.name }}</h2>
+  <span class="spacer"></span>
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'manager:debtors' %}">&larr; All debtors</a>
+</div>
+
+<div class="grid cards-4">
+  <div class="card"><h3>Phone</h3><div class="big" style="font-size:1.2rem">{{ debtor.phone|default:"—" }}</div></div>
+  <div class="card"><h3>Outstanding Balance</h3><div class="big" style="{% if balance > 0 %}color:var(--red){% endif %}">UGX {{ balance|floatformat:0 }}</div></div>
+  <div class="card"><h3>Credit Sales</h3><div class="big">{{ sales|length }}</div></div>
+  <div class="card"><h3>Payments Made</h3><div class="big">{{ payments|length }}</div></div>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3>Items taken on credit</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Receipt</th><th>Items</th><th>Total</th><th>Balance</th><th>Status</th></tr>
+    {% for s in sales %}
+    <tr>
+      <td>{{ s.created_at|date:"d M Y" }}</td>
+      <td>{{ s.receipt_number }}</td>
+      <td>{% for line in s.items.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>UGX {{ s.total|floatformat:0 }}</td>
+      <td>UGX {{ s.balance|floatformat:0 }}</td>
+      <td>
+        {% if s.balance <= 0 %}<span class="pill active">Paid off</span>
+        {% else %}<span class="pill locked">Owing</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="6" style="color:var(--muted)">No credit sales recorded.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3>Payment history</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Amount</th><th>Method</th><th>Received by</th></tr>
+    {% for p in payments %}
+    <tr>
+      <td>{{ p.created_at|date:"d M Y, H:i" }}</td>
+      <td style="color:var(--green);font-weight:700">UGX {{ p.amount|floatformat:0 }}</td>
+      <td>{{ p.method }}</td>
+      <td>{{ p.received_by.username|default:"—" }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="4" style="color:var(--muted)">No payments recorded yet.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+{% endblock %}

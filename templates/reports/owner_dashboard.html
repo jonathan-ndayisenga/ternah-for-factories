@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Owner Reports{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>{% if request.user.role == "OWNER" %}Owner Dashboard{% else %}{{ request.user.branch.name }} Dashboard{% endif %}</h2>
+  <span class="spacer"></span>
+  <select id="branchFilter" class="switcher" style="background:#fff;border:1px solid #D7DEE6;color:var(--text)"
+          {% if request.user.role != "OWNER" %}disabled title="Managers see their own branch only"{% endif %}>
+    {% if request.user.role == "OWNER" %}
+      <option value="">All branches</option>
+      {% for b in branches %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+    {% else %}
+      <option value="{{ request.user.branch_id }}" selected>{{ request.user.branch.name }}</option>
+    {% endif %}
+  </select>
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+<div class="print-only print-masthead">
+  <h1>{{ request.user.business.name }}</h1>
+  <p>{% if request.user.role == "OWNER" %}Owner Dashboard{% else %}{{ request.user.branch.name }} Dashboard{% endif %} — generated {% now "d M Y, H:i" %}</p>
+</div>
+
+<!-- headline cards load over HTMX; re-load when the branch filter changes -->
+<div id="cards" hx-get="{% url 'reports:stats_cards' %}" hx-trigger="load, branchChanged from:body"
+     hx-include="#branchFilter" hx-vals='js:{branch: document.getElementById("branchFilter").value}'></div>
+
+<div class="grid charts-2" style="margin-top:1rem">
+  <div class="card"><h3>Daily Sales — last 30 days</h3><div class="chart-wrap"><canvas id="dailySales"></canvas></div></div>
+  <div class="card"><h3>Revenue vs Gross Profit — 12 months</h3><div class="chart-wrap"><canvas id="monthlyGP"></canvas></div></div>
+  {% if request.user.role == "OWNER" %}
+  <div class="card"><h3>Sales by Branch</h3><div class="chart-wrap"><canvas id="byBranch"></canvas></div></div>
+  {% endif %}
+  <div class="card"><h3>Top 5 Sales Reps</h3><div class="chart-wrap"><canvas id="topReps"></canvas></div></div>
+  <div class="card"><h3>Payment Method Split</h3><div class="chart-wrap"><canvas id="paySplit"></canvas></div></div>
+  <div class="card"><h3>Expenses by Category</h3><div class="chart-wrap"><canvas id="expenses"></canvas></div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const NAVY = "#0F2A4A", BLUE = "#2563EB", GREEN = "#1E7A46", AMBER = "#D97706", RED = "#B91C1C";
+const charts = {};
+function q(extra) {
+  const b = document.getElementById("branchFilter").value;
+  return b ? (extra ? extra + "&" : "?") + "branch=" + b : (extra || "");
+}
+async function draw(id, url, build) {
+  const el = document.getElementById(id);
+  if (!el) return;   // e.g. "Sales by Branch" only renders for the owner
+  const res = await fetch(url + q(url.includes("?") ? "&" : ""));
+  const data = await res.json();
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(el, build(data));
+}
+function loadAll() {
+  draw("dailySales", "/reports/charts/daily-sales/", d => ({type: "line",
+    data: {labels: d.labels, datasets: [{label: "Sales (UGX)", data: d.data, borderColor: BLUE,
+           backgroundColor: "rgba(37,99,235,.12)", fill: true, tension: .3}]},
+    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}}}));
+  draw("monthlyGP", "/reports/charts/monthly-gp/", d => ({type: "bar",
+    data: {labels: d.labels, datasets: [
+      {label: "Revenue", data: d.revenue, backgroundColor: NAVY},
+      {label: "Gross profit", data: d.gross_profit, backgroundColor: GREEN}]},
+    options: {responsive: true, maintainAspectRatio: false}}));
+  draw("byBranch", "/reports/charts/sales-by-branch/", d => ({type: "bar",
+    data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: BLUE}]},
+    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}}}));
+  draw("topReps", "/reports/charts/top-reps/", d => ({type: "bar",
+    data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: GREEN}]},
+    options: {responsive: true, maintainAspectRatio: false, indexAxis: "y", plugins: {legend: {display: false}}}}));
+  draw("paySplit", "/reports/charts/payment-split/", d => ({type: "doughnut",
+    data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: [GREEN, BLUE, AMBER, RED]}]},
+    options: {responsive: true, maintainAspectRatio: false}}));
+  draw("expenses", "/reports/charts/expenses/", d => ({type: "doughnut",
+    data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: [NAVY, BLUE, AMBER, GREEN, RED]}]},
+    options: {responsive: true, maintainAspectRatio: false}}));
+}
+document.addEventListener("DOMContentLoaded", loadAll);
+document.getElementById("branchFilter").addEventListener("change", () => {
+  loadAll();
+  document.body.dispatchEvent(new Event("branchChanged"));   // HTMX re-loads the cards
+});
+</script>
+{% endblock %}

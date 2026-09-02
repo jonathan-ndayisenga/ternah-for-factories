@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Coming soon{% endblock %}
+{% block content %}
+<div class="card center-card">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.5rem">Coming soon</h2>
+  <p style="color:var(--muted)">{{ acting_role_label }} screens for {{ request.user.branch.name|default:"your branch" }} are still being built. Check back soon.</p>
+</div>
+{% endblock %}

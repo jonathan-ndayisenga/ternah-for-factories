@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ target.username }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:560px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">{{ target.username }}</h2>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">
+    <span class="role-pill role-{{ target.role|lower }}">{{ target.get_role_display }}</span>
+    &nbsp;·&nbsp; {{ target.branch.name }}
+  </p>
+  <form method="post" class="stack">{% csrf_token %}
+    <label>Module access</label>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.3rem">
+      {% for m in available_modules %}
+        <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
+                      background:var(--bg);border:1px solid #D7DEE6;border-radius:8px;
+                      padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer">
+          <input type="checkbox" name="modules" value="{{ m.id }}" style="width:auto"
+                 {% if m in target.modules.all %}checked{% endif %}>{{ m.name }}
+        </label>
+      {% empty %}
+        <span style="color:var(--muted);font-size:.85rem">No modules subscribed yet.</span>
+      {% endfor %}
+    </div>
+
+    {% if target.role == "CASHIER" or target.role == "SALES_REP" %}
+    <label>Sell-price tiers</label>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.3rem">
+      {% for code, label in tier_choices %}
+        <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
+                      background:var(--bg);border:1px solid #D7DEE6;border-radius:8px;
+                      padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer">
+          <input type="checkbox" name="allowed_tiers" value="{{ code }}" style="width:auto"
+                 {% if code in target.allowed_tiers %}checked{% endif %}>{{ label }}
+        </label>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <label>Permissions</label>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.3rem">
+      <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
+                    background:var(--bg);border:1px solid #D7DEE6;border-radius:8px;
+                    padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer">
+        <input type="checkbox" name="can_swap" style="width:auto" {% if target.can_swap %}checked{% endif %}>Can swap without approval
+      </label>
+      <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
+                    background:var(--bg);border:1px solid #D7DEE6;border-radius:8px;
+                    padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer">
+        <input type="checkbox" name="can_refund" style="width:auto" {% if target.can_refund %}checked{% endif %}>Can refund without approval
+      </label>
+      <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
+                    background:#FDECEA;border:1px solid #F5C2C0;border-radius:8px;
+                    padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer;color:var(--red)">
+        <input type="checkbox" name="is_active" style="width:auto" {% if target.is_active %}checked{% endif %}>Account active (uncheck to deactivate)
+      </label>
+    </div>
+
+    <button class="btn" style="margin-top:1.2rem">Save changes</button>
+  </form>
+</div>
+{% endblock %}

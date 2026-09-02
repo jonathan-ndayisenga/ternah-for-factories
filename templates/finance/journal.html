@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Journal{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>Journal{% if request.user.role == "MANAGER" %} — {{ request.user.branch.name }}{% endif %}</h2>
+  <span class="spacer"></span>
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+<div class="print-only print-masthead">
+  <h1>{{ request.user.business.name }}</h1>
+  <p>Journal{% if request.user.role == "MANAGER" %} — {{ request.user.branch.name }}{% endif %} — generated {% now "d M Y, H:i" %}</p>
+</div>
+
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th><th>By</th></tr>
+  {% for e in entries %}
+  <tr>
+    <td>{{ e.when|date:"d M Y, H:i" }}</td>
+    <td><span class="pill warning">{{ e.type }}</span></td>
+    <td>{{ e.description }}</td>
+    <td>
+      {% if e.amount != None %}
+      <span style="color:{% if e.amount < 0 %}var(--red){% else %}var(--green){% endif %};font-weight:700">
+        {% if e.amount > 0 %}+{% endif %}UGX {{ e.amount|floatformat:0 }}
+      </span>
+      {% else %}—{% endif %}
+    </td>
+    <td>{{ e.by.username|default:"—" }}</td>
+  </tr>
+  {% empty %}<tr><td colspan="5" style="color:var(--muted)">No activity recorded yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Ternah for Factories — Platform{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Software Owner Console</h2>
+  <span class="spacer"></span>
+  <a class="btn" href="{% url 'platformadmin:onboard' %}">+ Onboard a Factory</a>
+</div>
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Business</th><th>Billing state</th><th>Expiry</th><th>Tokens</th><th>Actions</th></tr>
+  {% for b in businesses %}
+  <tr>
+    <td><strong>{{ b.name }}</strong><br><span style="color:var(--muted);font-size:.8rem">{{ b.contact_email }}</span></td>
+    <td>
+      {% if b.billing_state == "ACTIVE" %}<span class="pill active">Active</span>
+      {% elif b.billing_state == "WARNING" %}<span class="pill warning">Expiring soon</span>
+      {% elif b.billing_state == "EXPIRED" %}<span class="pill warning">Expired (grace)</span>
+      {% else %}<span class="pill locked">Soft-locked</span>{% endif %}
+    </td>
+    <td>{{ b.subscription_expires_at|date:"d M Y"|default:"—" }}</td>
+    <td>{{ b.token_balance }}</td>
+    <td>
+      <form method="post" action="{% url 'platformadmin:top_up' b.pk %}" style="display:inline-flex;gap:.4rem">
+        {% csrf_token %}
+        <input name="amount" type="number" min="1" value="1" style="width:60px;padding:.3rem;border:1px solid #D7DEE6;border-radius:8px">
+        <button class="btn">Top up</button>
+      </form>
+      <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)"
+         href="{% url 'platformadmin:toggle_active' b.pk %}">{% if b.is_active %}Lock{% else %}Activate{% endif %}</a>
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="5" style="color:var(--muted)">No factories onboarded yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

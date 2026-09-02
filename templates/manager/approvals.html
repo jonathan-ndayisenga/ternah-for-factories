@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Approvals{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Approvals — {{ request.user.branch.name }}</h2>
+</div>
+{% if actions %}
+<div class="grid charts-2">
+  {% for a in actions %}
+  <div class="card">
+    <h3>{{ a.get_action_type_display }}</h3>
+    <p style="font-size:.9rem;margin-bottom:.5rem">
+      Requested by <strong>{{ a.requested_by.username }}</strong> on {{ a.created_at|date:"d M Y, H:i" }}
+    </p>
+    {% if a.payload_display %}
+      <div class="table-scroll" style="margin-bottom:.75rem">
+      <table class="list">
+        {% for key, value in a.payload_display %}
+        <tr><td style="font-weight:600">{{ key }}</td><td>{{ value }}</td></tr>
+        {% endfor %}
+      </table>
+      </div>
+    {% endif %}
+    <form method="post" action="{% url 'manager:approval_decide' a.pk %}" class="stack">
+      {% csrf_token %}
+      <div style="display:flex;gap:.5rem">
+        <button class="btn" name="decision" value="approve" style="flex:1">Approve</button>
+        <button class="btn ghost" name="decision" value="reject" style="flex:1;background:#FADBD8;color:var(--red)"
+                onclick="return confirmReject(this)">Reject</button>
+      </div>
+      <input type="hidden" name="reject_reason" class="reject-reason-input">
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p style="color:var(--muted)">No pending approvals right now.</p></div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function confirmReject(btn) {
+  const reason = prompt("Reason for rejecting?");
+  if (reason === null || reason.trim() === "") return false;
+  btn.closest("form").querySelector(".reject-reason-input").value = reason.trim();
+  return true;
+}
+</script>
+{% endblock %}

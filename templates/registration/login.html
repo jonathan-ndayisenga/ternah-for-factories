@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Sign in — {{ request.user.business.name|default:"Ternah for Factories" }}{% endblock %}
+{% block content %}
+<div class="auth-page">
+  <div class="auth-visual">
+    <span class="auth-mark" aria-hidden="true">T</span>
+    <p class="auth-brand">Ternah for Factories</p>
+    <p class="auth-tagline">Run your factory from one place — production, sales, cash and reports, all under one roof.</p>
+  </div>
+
+  <div class="auth-form-pane">
+    <div class="login-form-wrap">
+      <h1>Sign in</h1>
+      <p class="auth-sub">Enter your username and password to reach your dashboard.</p>
+
+      {% if form.non_field_errors %}
+        <ul class="errorlist">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>
+      {% endif %}
+
+      <form method="post" class="login-form">{% csrf_token %}
+        <label for="{{ form.username.id_for_label }}">Username</label>
+        {{ form.username }}
+        <label for="{{ form.password.id_for_label }}">Password</label>
+        {{ form.password }}
+        <button class="btn" type="submit">Login</button>
+      </form>
+      <p class="auth-helper">Forgot your details? Contact your business administrator.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>Reports</h2>
+  <span class="spacer"></span>
+  <form method="get" style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center">
+    <select name="branch" class="switcher" style="background:#fff;border:1px solid #D7DEE6;color:var(--text)">
+      <option value="">All branches</option>
+      {% for b in branches %}
+        <option value="{{ b.id }}" {% if request.GET.branch == b.id|stringformat:"s" %}selected{% endif %}>{{ b.name }}</option>
+      {% endfor %}
+    </select>
+    <input type="date" name="start" value="{{ start }}" style="padding:.45rem .6rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">
+    <input type="date" name="end" value="{{ end }}" style="padding:.45rem .6rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">
+    <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" type="submit">Filter</button>
+    <button class="btn" type="button" onclick="window.print()">Print</button>
+  </form>
+</div>
+
+<div class="print-only print-masthead">
+  <h1>{{ request.user.business.name }}</h1>
+  <p>Report — {{ start }} to {{ end }}{% if request.GET.branch %} · one branch{% else %} · all branches{% endif %}</p>
+</div>
+
+<div class="card" style="margin-bottom:1rem">
+  <h3>Sales — {{ start }} to {{ end }}</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Receipt</th><th>Customer</th><th>Items</th><th>Branch</th><th>Method</th><th>Total</th><th>Balance</th></tr>
+    {% for s in sales %}
+    <tr>
+      <td>{{ s.created_at|date:"d M Y" }}</td>
+      <td>{{ s.receipt_number }}</td>
+      <td>{{ s.customer_name|default:"—" }}</td>
+      <td>{% for line in s.items.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>{{ s.location.branch.name }}</td>
+      <td>{{ s.get_payment_method_display }}</td>
+      <td>UGX {{ s.total|floatformat:0 }}</td>
+      <td>UGX {{ s.balance|floatformat:0 }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="8" style="color:var(--muted)">No sales in this period.</td></tr>{% endfor %}
+    <tr><td colspan="6" style="text-align:right;font-weight:700">Total</td><td style="font-weight:700">UGX {{ sales_total|floatformat:0 }}</td><td></td></tr>
+  </table>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1rem">
+  <h3>Expenses — {{ start }} to {{ end }}</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Branch</th><th>Category</th><th>Note</th><th>Amount</th></tr>
+    {% for e in expenses %}
+    <tr>
+      <td>{{ e.date|date:"d M Y" }}</td>
+      <td>{{ e.location.branch.name }}</td>
+      <td>{{ e.category }}</td>
+      <td>{{ e.note|default:"—" }}</td>
+      <td>UGX {{ e.amount|floatformat:0 }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">No expenses in this period.</td></tr>{% endfor %}
+    <tr><td colspan="4" style="text-align:right;font-weight:700">Total</td><td style="font-weight:700">UGX {{ expenses_total|floatformat:0 }}</td></tr>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Outstanding Debtors</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Name</th><th>Phone</th><th>Branch</th><th>Balance</th></tr>
+    {% for d in debtors %}
+    <tr>
+      <td>{{ d.name }}</td>
+      <td>{{ d.phone|default:"—" }}</td>
+      <td>{{ d.location.branch.name }}</td>
+      <td>UGX {{ d.balance|floatformat:0 }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="4" style="color:var(--muted)">No outstanding debtors.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+{% endblock %}

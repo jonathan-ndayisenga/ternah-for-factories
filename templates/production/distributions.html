@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Distributions{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Distributions</h2>
+  <span class="spacer"></span>
+  <a class="btn" href="{% url 'production:distribution_create' %}">+ Send Stock</a>
+</div>
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Delivery Note</th><th>Date</th><th>Sent To</th><th>Items</th><th>Status</th><th></th></tr>
+  {% for d in distributions %}
+  <tr>
+    <td>{{ d.delivery_note_number }}</td>
+    <td>{{ d.date|date:"d M Y" }}</td>
+    <td>{{ d.receiver_location.branch.name }} — {{ d.receiver_location.rep.username|default:d.receiver_location.get_type_display }}</td>
+    <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+    <td>
+      {% if d.status == "RECEIVED" %}<span class="pill active">Received</span>
+      {% elif d.status == "DISPUTED" %}<span class="pill locked">Disputed</span>
+      {% else %}<span class="pill warning">Sent</span>{% endif %}
+    </td>
+    <td>
+      {% if d.status == "SENT" %}
+      <form method="post" action="{% url 'production:distribution_confirm' d.pk %}" style="display:inline-flex;gap:.4rem">
+        {% csrf_token %}
+        <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto">Confirm</button>
+        <button class="btn ghost ternah-dispute" name="action" value="dispute" style="padding:.4rem .7rem;min-height:auto;background:#FADBD8;color:var(--red)">Dispute</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="6" style="color:var(--muted)">No distributions yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

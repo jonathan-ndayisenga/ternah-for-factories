@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Batch {{ batch.batch_number }}{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>Batch {{ batch.batch_number }}</h2>
+  <span class="spacer"></span>
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:production_report' %}">&larr; All batches</a>
+  <button class="btn" onclick="window.print()">Print</button>
+</div>
+
+<div class="print-only print-masthead">
+  <h1>{{ request.user.business.name }}</h1>
+  <p>Production Batch Report — {{ batch.batch_number }}</p>
+</div>
+
+<div class="grid cards-4">
+  <div class="card"><h3>Product</h3><div class="big" style="font-size:1.2rem">{{ batch.product.name }}</div></div>
+  <div class="card"><h3>Date</h3><div class="big" style="font-size:1.2rem">{{ batch.date|date:"d M Y" }}</div></div>
+  <div class="card"><h3>Target / Actual</h3><div class="big" style="font-size:1.2rem">{{ batch.target_quantity }} / {{ batch.actual_quantity|default:"—" }}</div></div>
+  <div class="card"><h3>Unit Cost</h3><div class="big" style="font-size:1.2rem">UGX {{ batch.unit_cost_at_production|floatformat:2 }}</div></div>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3>Formula used — v{{ batch.formula.version }}</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Raw Material</th><th>Qty per unit</th></tr>
+    {% for line in batch.formula.lines.all %}
+    <tr><td>{{ line.raw_material.name }}</td><td>{{ line.quantity_per_unit }} {{ line.raw_material.unit_of_measure }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3>Raw materials dispensed</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Raw Material</th><th>Quantity Dispensed</th><th>Sourced From</th></tr>
+    {% for d in dispensations %}
+    <tr>
+      <td>{{ d.raw_material.name }}</td>
+      <td>{{ d.quantity_dispensed }} {{ d.raw_material.unit_of_measure }}</td>
+      <td>{{ d.purchase.batch_number }} (UGX {{ d.purchase.unit_cost|floatformat:2 }}/{{ d.raw_material.unit_of_measure }})</td>
+    </tr>
+    {% empty %}<tr><td colspan="3" style="color:var(--muted)">No dispensation recorded.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3>Quality Assurance</h3>
+  {% if qa %}
+    <p><strong>Quality notes:</strong> {{ qa.quality_notes }}</p>
+    {% if qa.quantity_notes %}<p style="margin-top:.5rem"><strong>Quantity notes:</strong> {{ qa.quantity_notes }}</p>{% endif %}
+    <p style="margin-top:.5rem;color:var(--muted);font-size:.85rem">Recorded by {{ qa.author.username|default:"—" }}</p>
+  {% else %}
+    <p style="color:var(--muted)">No QA report filed for this batch yet.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3>Recent distributions of {{ batch.product.name }}</h3>
+  <p style="color:var(--muted);font-size:.8rem;margin-bottom:.5rem">Distribution is tracked per product, not per batch — shown here for context, not as batch-specific lineage.</p>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Delivery Note</th><th>Sent To</th><th>Quantity</th><th>Status</th></tr>
+    {% for line in recent_distributions %}
+    <tr>
+      <td>{{ line.distribution.date|date:"d M Y" }}</td>
+      <td>{{ line.distribution.delivery_note_number }}</td>
+      <td>{{ line.distribution.receiver_location.branch.name }} / {{ line.distribution.receiver_location.get_type_display }}</td>
+      <td>{{ line.quantity }}</td>
+      <td>{{ line.distribution.get_status_display }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">No distributions recorded for this product.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+{% endblock %}

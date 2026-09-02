@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Inventory — {{ request.user.branch.name }}</h2>
+  {% if items %}<span class="spacer"></span><span class="pill active">Stock value: UGX {{ stock_value|floatformat:0 }}</span>{% endif %}
+</div>
+
+{% if incoming %}
+<div class="card" style="margin-bottom:1rem">
+  <h3>Incoming from Production — awaiting confirmation</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Delivery Note</th><th>Date</th><th>To</th><th>Items</th><th></th></tr>
+    {% for d in incoming %}
+    <tr>
+      <td>{{ d.delivery_note_number }}</td>
+      <td>{{ d.date|date:"d M Y" }}</td>
+      <td>{{ d.receiver_location.rep.username|default:d.receiver_location.get_type_display }}</td>
+      <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        <form method="post" action="{% url 'production:distribution_confirm' d.pk %}" style="display:inline-flex;gap:.4rem">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{% url 'manager:inventory' %}">
+          <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto">Confirm</button>
+          <button class="btn ghost" name="action" value="dispute" style="padding:.4rem .7rem;min-height:auto;background:#FADBD8;color:var(--red)">Dispute</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+
+{% if not location %}
+<div class="card"><p style="color:var(--muted)">No outlet inventory is set up for your branch yet.</p></div>
+{% else %}
+<div class="card" style="margin-bottom:1rem">
+  <h3>Stock on hand</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Product</th><th>Quantity</th><th>Cost (buying price)</th><th>Value</th><th>Status</th></tr>
+    {% for i in items %}
+    <tr>
+      <td>{{ i.product.name }}</td>
+      <td>{{ i.quantity }}</td>
+      <td>UGX {{ i.buying_price|floatformat:2 }}</td>
+      <td>UGX {{ i.value|floatformat:0 }}</td>
+      <td>
+        {% if i.quantity <= i.low_stock_threshold %}<span class="pill locked">Low stock</span>
+        {% else %}<span class="pill active">OK</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">No stock recorded yet.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Recent stock movements</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Product</th><th>Change</th><th>Reason</th><th>Reference</th></tr>
+    {% for m in movements %}
+    <tr>
+      <td>{{ m.created_at|date:"d M Y, H:i" }}</td>
+      <td>{{ m.product.name }}</td>
+      <td style="color:{% if m.quantity < 0 %}var(--red){% else %}var(--green){% endif %};font-weight:700">
+        {% if m.quantity > 0 %}+{% endif %}{{ m.quantity }}
+      </td>
+      <td>{{ m.get_reason_display }}</td>
+      <td>{{ m.reference|default:"—" }}</td>
+    </tr>
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">No movements recorded yet.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

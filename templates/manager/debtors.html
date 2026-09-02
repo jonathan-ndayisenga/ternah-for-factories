@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Debtors{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Debtors — {{ request.user.branch.name }}</h2>
+</div>
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Name</th><th>Phone</th><th>Location</th><th>Balance</th><th>Age</th><th>Record payment</th><th></th></tr>
+  {% for row in rows %}
+  <tr>
+    <td><strong>{{ row.debtor.name }}</strong></td>
+    <td>{{ row.debtor.phone|default:"—" }}</td>
+    <td>{{ row.debtor.location.get_type_display }}{% if row.debtor.location.rep %} — {{ row.debtor.location.rep.username }}{% endif %}</td>
+    <td>UGX {{ row.balance|floatformat:0 }}</td>
+    <td>
+      {% if row.age_days > 30 %}<span class="pill locked">{{ row.age_days }} days</span>
+      {% elif row.age_days > 7 %}<span class="pill warning">{{ row.age_days }} days</span>
+      {% else %}<span class="pill active">{{ row.age_days }} days</span>{% endif %}
+    </td>
+    <td>
+      <form method="post" action="{% url 'sales:record_payment' %}" style="display:flex;gap:.4rem">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'manager:debtors' %}">
+        <input type="hidden" name="debtor_id" value="{{ row.debtor.id }}">
+        <input name="amount" type="number" min="1" style="width:100px;padding:.4rem .6rem;border:1px solid #D7DEE6;border-radius:8px" required>
+        <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">Pay</button>
+      </form>
+    </td>
+    <td><a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'manager:debtor_detail' row.debtor.pk %}">Details</a></td>
+  </tr>
+  {% empty %}<tr><td colspan="7" style="color:var(--muted)">No outstanding debtors at your branch.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Production Batches{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Production Batches</h2>
+</div>
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Batch</th><th>Product</th><th>Date</th><th>Target</th><th>Actual</th><th>Unit Cost</th><th>Total Cost</th><th>Status</th></tr>
+  {% for b in batches %}
+  <tr>
+    <td><a href="{% url 'reports:production_batch_detail' b.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ b.batch_number }}</a></td>
+    <td>{{ b.product.name }}</td>
+    <td>{{ b.date|date:"d M Y" }}</td>
+    <td>{{ b.target_quantity }}</td>
+    <td>{{ b.actual_quantity|default:"—" }}</td>
+    <td>UGX {{ b.unit_cost_at_production|floatformat:2 }}</td>
+    <td>UGX {{ b.total_cost|floatformat:0 }}</td>
+    <td>
+      {% if b.status == "COMPLETED" %}<span class="pill active">Completed</span>
+      {% elif b.status == "DISPENSED" %}<span class="pill warning">Dispensed</span>
+      {% else %}<span class="pill locked">Planned</span>{% endif %}
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="8" style="color:var(--muted)">No production batches yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

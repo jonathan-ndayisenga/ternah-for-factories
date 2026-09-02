@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Payment Accounts{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Payment Accounts</h2>
+</div>
+
+<div class="grid charts-2">
+  <div class="card">
+    <h3>Mobile Money</h3>
+    <div class="table-scroll" style="margin-bottom:1rem">
+    <table class="list">
+      <tr><th>Provider</th><th>Number</th><th>Status</th><th></th></tr>
+      {% for a in momo_accounts %}
+      <tr>
+        <td>{{ a.provider }}</td>
+        <td>{{ a.number }}</td>
+        <td>{% if a.is_active %}<span class="pill active">Active</span>{% else %}<span class="pill locked">Disabled</span>{% endif %}</td>
+        <td>
+          <form method="post" action="{% url 'finance:payment_account_toggle' 'momo' a.pk %}">
+            {% csrf_token %}
+            <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.35rem .6rem;min-height:auto">
+              {% if a.is_active %}Disable{% else %}Enable{% endif %}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}<tr><td colspan="4" style="color:var(--muted)">No Mobile Money accounts yet.</td></tr>{% endfor %}
+    </table>
+    </div>
+    <form method="post" class="stack">
+      {% csrf_token %}
+      <input type="hidden" name="kind" value="momo">
+      <label>Provider</label>
+      <input name="provider" placeholder="e.g. MTN MoMo, Airtel Money" required>
+      <label>Number</label>
+      <input name="number" placeholder="e.g. 0771234567" required>
+      <button class="btn" style="margin-top:1rem">Add Mobile Money account</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Bank Accounts</h3>
+    <div class="table-scroll" style="margin-bottom:1rem">
+    <table class="list">
+      <tr><th>Bank</th><th>Account</th><th>Status</th><th></th></tr>
+      {% for a in bank_accounts %}
+      <tr>
+        <td>{{ a.bank_name }}<br><span style="color:var(--muted);font-size:.8rem">{{ a.account_name }}</span></td>
+        <td>{{ a.account_number }}</td>
+        <td>{% if a.is_active %}<span class="pill active">Active</span>{% else %}<span class="pill locked">Disabled</span>{% endif %}</td>
+        <td>
+          <form method="post" action="{% url 'finance:payment_account_toggle' 'bank' a.pk %}">
+            {% csrf_token %}
+            <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.35rem .6rem;min-height:auto">
+              {% if a.is_active %}Disable{% else %}Enable{% endif %}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}<tr><td colspan="4" style="color:var(--muted)">No bank accounts yet.</td></tr>{% endfor %}
+    </table>
+    </div>
+    <form method="post" class="stack">
+      {% csrf_token %}
+      <input type="hidden" name="kind" value="bank">
+      <label>Bank name</label>
+      <input name="bank_name" required>
+      <label>Account name</label>
+      <input name="account_name" required>
+      <label>Account number</label>
+      <input name="account_number" required>
+      <button class="btn" style="margin-top:1rem">Add Bank account</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

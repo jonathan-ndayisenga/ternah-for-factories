@@ -1,0 +1,6 @@
+<div class="grid cards-4">
+  <div class="card"><h3>Today's Sales</h3><div class="big">UGX {{ today_sales|floatformat:0 }}</div></div>
+  <div class="card"><h3>Sales This Month</h3><div class="big">UGX {{ mtd_sales|floatformat:0 }}</div></div>
+  <div class="card"><h3>Gross Profit (MTD)</h3><div class="big">UGX {{ mtd_gross_profit|floatformat:0 }}</div></div>
+  <div class="card"><h3>Outstanding Debtors</h3><div class="big">UGX {{ outstanding_debt|floatformat:0 }}</div></div>
+</div>

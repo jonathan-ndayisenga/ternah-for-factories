@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Manager Dashboard{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>{{ request.user.branch.name }} Dashboard</h2>
+  <span class="spacer"></span>
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+<div class="grid cards-4">
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'manager:approvals' %}">
+    <h3>Pending Approvals</h3>
+    <div class="big" style="{% if pending_approvals %}color:var(--red){% endif %}">{{ pending_approvals }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:distributions' %}">
+    <h3>Awaiting Confirmation</h3>
+    <div class="big" style="{% if awaiting_distributions %}color:var(--amber){% endif %}">{{ awaiting_distributions }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:product_list' %}">
+    <h3>Products Awaiting Pricing</h3>
+    <div class="big" style="{% if awaiting_pricing %}color:var(--amber){% endif %}">{{ awaiting_pricing }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'manager:inventory' %}">
+    <h3>Low Stock Items</h3>
+    <div class="big" style="{% if low_stock %}color:var(--red){% endif %}">{{ low_stock }}</div>
+  </a>
+</div>
+
+<div class="no-print" style="display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0">
+  <a class="btn" href="{% url 'sales:pos' %}">New Sale</a>
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'manager:debtors' %}">Debtors</a>
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'sales:pos' %}">Record Expense</a>
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'manager:inventory' %}">Inventory</a>
+</div>
+
+<div class="print-only print-masthead">
+  <h1>{{ request.user.business.name }}</h1>
+  <p>{{ request.user.branch.name }} Dashboard — generated {% now "d M Y, H:i" %}</p>
+</div>
+
+<div id="cards" hx-get="{% url 'reports:stats_cards' %}" hx-trigger="load"></div>
+
+<div class="grid charts-2" style="margin-top:1rem">
+  <div class="card"><h3>Daily Sales — last 30 days</h3><div class="chart-wrap"><canvas id="dailySales"></canvas></div></div>
+  <div class="card"><h3>Revenue vs Gross Profit — 12 months</h3><div class="chart-wrap"><canvas id="monthlyGP"></canvas></div></div>
+  <div class="card"><h3>Top 5 Sales Reps</h3><div class="chart-wrap"><canvas id="topReps"></canvas></div></div>
+  <div class="card"><h3>Payment Method Split</h3><div class="chart-wrap"><canvas id="paySplit"></canvas></div></div>
+  <div class="card"><h3>Expenses by Category</h3><div class="chart-wrap"><canvas id="expenses"></canvas></div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const NAVY = "#0F2A4A", BLUE = "#2563EB", GREEN = "#1E7A46", AMBER = "#D97706", RED = "#B91C1C";
+const charts = {};
+async function draw(id, url, build) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(el, build(data));
+}
+function loadAll() {
+  draw("dailySales", "/reports/charts/daily-sales/", d => ({type: "line",
+    data: {labels: d.labels, datasets: [{label: "Sales (UGX)", data: d.data, borderColor: BLUE,
+           backgroundColor: "rgba(37,99,235,.12)", fill: true, tension: .3}]},
+    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}}}));
+  draw("monthlyGP", "/reports/charts/monthly-gp/", d => ({type: "bar",
+    data: {labels: d.labels, datasets: [
+      {label: "Revenue", data: d.revenue, backgroundColor: NAVY},
+      {label: "Gross profit", data: d.gross_profit, backgroundColor: GREEN}]},
+    options: {responsive: true, maintainAspectRatio: false}}));
+  draw("topReps", "/reports/charts/top-reps/", d => ({type: "bar",
+    data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: GREEN}]},
+    options: {responsive: true, maintainAspectRatio: false, indexAxis: "y", plugins: {legend: {display: false}}}}));
+  draw("paySplit", "/reports/charts/payment-split/", d => ({type: "doughnut",
+    data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: [GREEN, BLUE, AMBER, RED]}]},
+    options: {responsive: true, maintainAspectRatio: false}}));
+  draw("expenses", "/reports/charts/expenses/", d => ({type: "doughnut",
+    data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: [NAVY, BLUE, AMBER, GREEN, RED]}]},
+    options: {responsive: true, maintainAspectRatio: false}}));
+}
+document.addEventListener("DOMContentLoaded", loadAll);
+</script>
+{% endblock %}
