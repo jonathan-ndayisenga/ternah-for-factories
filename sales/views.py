@@ -405,13 +405,17 @@ def received_items(request):
 
 
 @login_required
-@user_passes_test(lambda u: u.is_authenticated and u.role == "SALES_REP")
 def stock_request_create(request):
     """A rep asking Production for more stock — shows what's currently
     sitting in the factory store so the request is grounded in reality, but
     doesn't hard-block asking for more (stock moves between now and when
     Production actually looks at it). Lands in Production's Stock Requests
-    inbox; fulfilling it there is what actually creates the distribution."""
+    inbox; fulfilling it there is what actually creates the distribution.
+    Same rule as the nav link that leads here: a native Sales Rep, or a
+    Manager currently acting as one — not just u.role, which stays
+    "MANAGER" even while she's switched into that view."""
+    if _acting_role(request) != "SALES_REP":
+        return redirect("home")
     location = _pos_location(request)
     biz = request.user.business
     factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
