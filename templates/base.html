@@ -84,6 +84,10 @@
     .nav-link:focus-visible { outline: 2px solid var(--ternah-blue); outline-offset: 2px; }
     .nav-link.active { background: rgba(37,99,235,.28); color: #fff; border-left-color: var(--ternah-blue); }
     .nav-link.disabled { opacity: .4; cursor: default; pointer-events: none; }
+    .nav-badge { margin-left: auto; background: var(--red); color: #fff; font-size: .72rem; font-weight: 800;
+                 line-height: 1; padding: .28rem .48rem; border-radius: 999px; flex-shrink: 0; }
+    .tile-badge { position: absolute; top: 1rem; right: 1rem; background: var(--red); color: #fff;
+                  font-size: .78rem; font-weight: 800; padding: .3rem .6rem; border-radius: 999px; }
 
     .view-switch { display: flex; flex-direction: column; gap: .2rem; padding: 0 .05rem .6rem; }
     .view-switch-item { display: block; padding: .5rem .65rem; border-radius: 8px;
@@ -304,7 +308,9 @@
       </div>
 
       <nav class="sidebar-nav">
-        {% if request.user.is_superuser %}
+        {% if request.resolver_match.url_name == "home" and request.user.role == "OWNER" or request.resolver_match.url_name == "home" and request.user.role == "MANAGER" %}
+          <p style="color:rgba(255,255,255,.45);font-size:.82rem;padding:.4rem .65rem">Pick a tile to get started.</p>
+        {% elif request.user.is_superuser %}
           <div class="nav-section-label">Platform</div>
           <a class="nav-link {% if request.resolver_match.namespace == 'platformadmin' and request.resolver_match.url_name == 'dashboard' %}active{% endif %}"
              href="{% url 'platformadmin:dashboard' %}">
@@ -470,6 +476,7 @@
              href="{% url 'production:stock_requests' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             Stock Requests
+            {% if pending_stock_requests %}<span class="nav-badge">{{ pending_stock_requests }}</span>{% endif %}
           </a>
         {% elif request.user.role == "MANAGER" %}
           <a class="nav-link" href="{% url 'home' %}">
@@ -615,6 +622,7 @@
              href="{% url 'production:stock_requests' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             Stock Requests
+            {% if pending_stock_requests %}<span class="nav-badge">{{ pending_stock_requests }}</span>{% endif %}
           </a>
         {% else %}
           <div class="nav-section-label">{{ request.user.get_role_display }}</div>

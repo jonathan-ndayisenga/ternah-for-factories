@@ -6,7 +6,7 @@
   .tile-head h2 { color: var(--ternah-navy); margin-bottom: .3rem; }
   .tile-head p { color: var(--muted); font-size: .92rem; }
   .tile-grid { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); }
-  .tile { display: block; background: var(--card); border-radius: 18px; box-shadow: var(--shadow-sm);
+  .tile { position: relative; display: block; background: var(--card); border-radius: 18px; box-shadow: var(--shadow-sm);
           padding: 1.6rem 1.5rem; text-decoration: none; border: 1.5px solid transparent;
           transition: border-color .15s, box-shadow .15s, transform .15s; }
   .tile:hover { box-shadow: var(--shadow-md); border-color: var(--ternah-blue); transform: translateY(-2px); }
@@ -24,6 +24,7 @@
 <div class="tile-grid">
   {% for t in tiles %}
   <a class="tile" href="{{ t.href }}">
+    {% if t.key == "production" and pending_stock_requests %}<span class="tile-badge">{{ pending_stock_requests }}</span>{% endif %}
     <div class="tile-icon">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{{ t.icon|safe }}</svg>
     </div>
