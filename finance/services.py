@@ -91,6 +91,19 @@ def post_sale(sale):
                 f"sale:{sale.pk}", f"{sale.receipt_number} to {who}", lines, actor=sale.served_by)
 
 
+def post_cogs_correction(sale, amount, memo):
+    """A sale's original entry skipped COGS entirely when its SaleItem.unit_cost
+    snapshots were 0 (the buying-price-propagation bug) — post_sale's `if
+    cogs_total:` guard means nothing was ever posted for it, so there's no
+    wrong entry to reverse, just a missing one to add. Dated to the sale's
+    own day so historical P&L for that period comes out right too, not just
+    today's balance sheet. Idempotent per sale like every other post_* here."""
+    accounts = get_accounts(sale.business)
+    return _post(sale.business, sale.location.branch, _local_date(sale.created_at), "COGS_CORRECTION",
+                f"cogs_correction:{sale.pk}", memo,
+                [(accounts["5000"], amount, 0), (accounts["1210"], 0, amount)])
+
+
 def post_debtor_payment(payment):
     business = payment.debtor.business
     accounts = get_accounts(business)

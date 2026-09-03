@@ -54,7 +54,8 @@ class JournalEntry(TimeStamped):
                ("EXPENSE", "Expense"), ("DISBURSEMENT", "Disbursement"), ("PAYABLE_PAYMENT", "Payable payment"),
                ("ORDER_DEPOSIT", "Order deposit"), ("REMITTANCE", "Rep remittance"),
                ("SWAP", "Swap"), ("REVERSAL", "Reversal"), ("CAPITAL", "Owner capital"),
-               ("OUTLET_TRANSFER_OUT", "Outlet transfer (sent)"), ("OUTLET_TRANSFER_IN", "Outlet transfer (received)")]
+               ("OUTLET_TRANSFER_OUT", "Outlet transfer (sent)"), ("OUTLET_TRANSFER_IN", "Outlet transfer (received)"),
+               ("COGS_CORRECTION", "Cost of goods sold — correction")]
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
     branch = models.ForeignKey("core.Branch", null=True, blank=True, on_delete=models.SET_NULL)  # branch P&L
     number = models.CharField(max_length=40, blank=True)      # JNL{INITIALS}-DDMMYY-SEQ
