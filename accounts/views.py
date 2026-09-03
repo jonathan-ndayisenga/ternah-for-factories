@@ -1,9 +1,11 @@
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from core.models import Branch
 from platformadmin.models import Module
 from sales.models import InventoryLocation
+from .middleware import MANAGER_SECTIONS, OWNER_SECTIONS
 from .models import PRICE_TIERS, User
 
 
@@ -13,6 +15,76 @@ def switch_view(request, view):
     # view outside what's actually granted must not work either.
     if request.user.role == "MANAGER" and view in request.user.switchable_views():
         request.session["active_view"] = view
+    return redirect("home")
+
+
+# Home-tile screen: Owner and Manager each have more than one place to go,
+# so login lands them on a picker instead of guessing which one they meant.
+# Everyone else has exactly one destination and skips this entirely — see
+# config/urls.py's home() view.
+OWNER_SECTION_LANDING = {"reports": "reports:owner_dashboard", "finance": "finance:financial_reports",
+                         "manage": "core:branches"}
+MANAGER_SECTION_LANDING = {"branch": "manager:dashboard", "manage": "user_list", "finance": "manager:debtors"}
+
+
+def owner_tiles():
+    icons = {
+        "reports": '<path d="M4 19V10M12 19V5M20 19v-6"/><path d="M3 19h18"/>',
+        "finance": '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-4"/>',
+        "manage": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    }
+    return [
+        {"key": "reports", "label": "Reports", "icon": icons["reports"],
+         "desc": "Dashboard, production, stock movements, debtors, rep performance",
+         "href": reverse("select_section", args=["reports"])},
+        {"key": "finance", "label": "Finance", "icon": icons["finance"],
+         "desc": "Trial balance, profit & loss, balance sheet, revenue by product",
+         "href": reverse("select_section", args=["finance"])},
+        {"key": "manage", "label": "Manage", "icon": icons["manage"],
+         "desc": "Branches, users, product pricing, business settings",
+         "href": reverse("select_section", args=["manage"])},
+    ]
+
+
+def manager_tiles(user):
+    icons = {
+        "branch": '<path d="M4 19V10M12 19V5M20 19v-6"/><path d="M3 19h18"/>',
+        "manage": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+        "finance": '<path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-4"/>',
+        "CASHIER": '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
+        "PRODUCTION": '<path d="M10 2v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 8.5V2"/><path d="M8.5 2h7M7 15h10"/>',
+        "SALES_REP": '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
+    }
+    tiles = [
+        {"key": "branch", "label": "Branch", "icon": icons["branch"],
+         "desc": "Dashboard, inventory, stock movements, approvals",
+         "href": reverse("select_section", args=["branch"])},
+        {"key": "manage", "label": "Manage", "icon": icons["manage"],
+         "desc": "Staff at your branch", "href": reverse("select_section", args=["manage"])},
+        {"key": "finance", "label": "Finance", "icon": icons["finance"],
+         "desc": "Debtors, cashbook, ledger, expenses, payment accounts",
+         "href": reverse("select_section", args=["finance"])},
+    ]
+    labels = {"CASHIER": "Cashier", "PRODUCTION": "Production", "SALES_REP": "Sales Rep"}
+    descs = {"CASHIER": "Ring up sales at your outlet", "PRODUCTION": "Formulas, batches, distribution",
+             "SALES_REP": "Sell out of your own stock"}
+    for v in user.switchable_views():
+        if v == "MANAGER":
+            continue
+        tiles.append({"key": v.lower(), "label": labels.get(v, v.title()), "icon": icons.get(v, icons["branch"]),
+                      "desc": descs.get(v, ""), "href": f"/accounts/switch/{v}/"})
+    return tiles
+
+
+@login_required
+def select_section(request, key):
+    if request.user.role == "OWNER" and key in OWNER_SECTIONS:
+        request.session["owner_section"] = key
+        return redirect(OWNER_SECTION_LANDING[key])
+    if request.user.role == "MANAGER" and key in MANAGER_SECTIONS:
+        request.session["manager_section"] = key
+        request.session["active_view"] = "MANAGER"   # a section pick always means "my own view", not a switched one
+        return redirect(MANAGER_SECTION_LANDING[key])
     return redirect("home")
 
 

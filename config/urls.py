@@ -6,21 +6,32 @@ from django.urls import include, path
 
 @login_required
 def home(request):
-    """Route by who you are — super user to the platform console, owner to
-    the business-wide dashboard, manager to their branch's dashboard (or
-    wherever they've switched to via the view switcher), cashiers/reps to
-    the POS, everyone else to a coming-soon stub."""
+    """Route by who you are. Owner always has more than one place they might
+    mean, so Home is always their tile picker. A Manager is the same, but
+    only while she's in her own (MANAGER) view — Home there is her picker
+    over Branch/Manage/Finance plus whatever views she's been granted; once
+    she's switched into one of those views, Home just means that view's own
+    landing page, same as it would for a native user of that role — getting
+    back to her picker is "Back to Manager" (the mode banner, or the Home
+    link inside that view's nav, which points at the same switch-to-MANAGER
+    route), not a second meaning of Home. Everyone else has exactly one
+    destination and is sent straight there, every time — a Cashier/Rep/
+    Production user never sees a picker with one tile on it."""
+    from accounts.views import manager_tiles, owner_tiles
     u = request.user
     if u.is_superuser:
         return redirect("platformadmin:dashboard")
     if u.role == "OWNER":
-        return redirect("reports:owner_dashboard")
-    view = request.active_view if u.role == "MANAGER" else u.role
-    if view == "MANAGER":
-        return redirect("manager:dashboard")
-    if view in ("CASHIER", "SALES_REP"):
+        return render(request, "home_tiles.html", {"tiles": owner_tiles()})
+    if u.role == "MANAGER":
+        if request.active_view in ("CASHIER", "SALES_REP"):
+            return redirect("sales:pos")
+        if request.active_view == "PRODUCTION":
+            return redirect("production:dashboard")
+        return render(request, "home_tiles.html", {"tiles": manager_tiles(u)})
+    if u.role in ("CASHIER", "SALES_REP"):
         return redirect("sales:pos")
-    if view == "PRODUCTION":
+    if u.role == "PRODUCTION":
         return redirect("production:dashboard")
     return redirect("coming_soon")
 
