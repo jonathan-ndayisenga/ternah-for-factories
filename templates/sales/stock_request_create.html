@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Order Stock{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Order Stock</h2>
+</div>
+
+{% if not location %}
+<div class="card"><p style="color:var(--muted)">No inventory location is set up for you yet.</p></div>
+{% else %}
+
+<div class="card" style="max-width:640px;margin-bottom:1rem">
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.75rem">Quantities shown are what's currently sitting in the factory store, so you know what's realistic to ask for. This creates a request in Production's queue — it becomes a real delivery once they fulfil it.</p>
+  <form method="post" class="stack" id="requestForm">
+    {% csrf_token %}
+    <div id="cartRows">
+      <div class="cart-row">
+        <select name="product" class="req-product" required>
+          <option value="">Select product…</option>
+          {% for p in active_products %}
+            <option value="{{ p.id }}">{{ p.name }} ({{ p.available_at_factory }} at factory)</option>
+          {% endfor %}
+        </select>
+        <input type="number" name="quantity" min="1" value="1" required>
+        <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
+      </div>
+    </div>
+    <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addCartRow()">+ Add item</button>
+
+    <button class="btn" style="margin-top:1.2rem;width:100%">Send request</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Your requests</h3>
+  <div class="table-scroll" style="margin-top:.5rem">
+  <table class="list">
+    <tr><th>Date</th><th>Items</th><th>Status</th></tr>
+    {% for r in my_requests %}
+    <tr>
+      <td>{{ r.created_at|date:"d M Y, H:i" }}</td>
+      <td>{% for line in r.lines_display %}{{ line.product.name|default:"Unknown product" }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        {% if r.status == "SUBMITTED" %}<span class="pill warning">Awaiting Production</span>
+        {% elif r.status == "FULFILLED" %}<span class="pill active">Fulfilled</span>
+        {% else %}<span class="pill locked">{{ r.get_status_display }}</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="3" style="color:var(--muted)">You haven't requested any stock yet.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addCartRow() {
+  const rows = document.getElementById("cartRows");
+  const row = rows.firstElementChild.cloneNode(true);
+  row.querySelectorAll("select, input").forEach(el => { if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "1"; });
+  rows.appendChild(row);
+}
+function removeCartRow(btn) {
+  const rows = document.getElementById("cartRows");
+  if (rows.children.length > 1) btn.closest(".cart-row").remove();
+}
+</script>
+{% endblock %}

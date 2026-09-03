@@ -17,7 +17,7 @@
       <td>{{ d.delivery_note_number }}</td>
       <td>{{ d.date|date:"d M Y" }}</td>
       <td>{{ d.receiver_location.rep.username|default:d.receiver_location.get_type_display }}</td>
-      <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if line.batch %} <span style="color:var(--muted);font-size:.78rem">({{ line.batch.batch_number }})</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
       <td>
         <form method="post" action="{% url 'production:distribution_confirm' d.pk %}" style="display:inline-flex;gap:.4rem">
           {% csrf_token %}

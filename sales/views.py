@@ -14,10 +14,10 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from accounts.models import PRICE_TIERS
 from finance.services import post_debtor_payment, post_expense, post_outlet_transfer_expense, post_sale
-from production.models import Distribution, DistributionLine
+from production.models import Distribution, DistributionLine, Product
 from .models import (
     BankAccount, DailyOpeningBalance, Debtor, DebtorPayment, Expense, InventoryLocation,
-    MomoAccount, OutletTransfer, OutletTransferLine, Sale, SaleItem, StockItem, StockMovement,
+    MomoAccount, OutletTransfer, OutletTransferLine, Sale, SaleItem, StockItem, StockMovement, StockRequest,
 )
 
 POS_ROLES = ("CASHIER", "SALES_REP")
@@ -394,7 +394,7 @@ def received_items(request):
     if location:
         lines = list(DistributionLine.objects.filter(distribution__receiver_location=location,
                                                       distribution__status="RECEIVED")
-                     .select_related("product", "distribution").order_by("-distribution__date"))
+                     .select_related("product", "distribution", "batch").order_by("-distribution__date"))
         for line in lines:
             line.your_prices = [
                 (label, line.product.price_for_tier(code))
@@ -402,6 +402,57 @@ def received_items(request):
                 if code in allowed and code != "CUSTOM" and line.product.price_for_tier(code) is not None
             ]
     return render(request, "sales/received_items.html", {"location": location, "lines": lines})
+
+
+@login_required
+@user_passes_test(lambda u: u.is_authenticated and u.role == "SALES_REP")
+def stock_request_create(request):
+    """A rep asking Production for more stock — shows what's currently
+    sitting in the factory store so the request is grounded in reality, but
+    doesn't hard-block asking for more (stock moves between now and when
+    Production actually looks at it). Lands in Production's Stock Requests
+    inbox; fulfilling it there is what actually creates the distribution."""
+    location = _pos_location(request)
+    biz = request.user.business
+    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+    active_products = Product.objects.filter(business=biz, status="ACTIVE").order_by("name")
+    stock_by_product = {
+        item.product_id: item.quantity
+        for item in StockItem.objects.filter(location=factory_store, product__in=active_products)
+    } if factory_store else {}
+    for p in active_products:
+        p.available_at_factory = stock_by_product.get(p.id, 0)
+
+    if request.method == "POST" and location:
+        lines = []
+        for pid, qty in zip(request.POST.getlist("product"), request.POST.getlist("quantity")):
+            try:
+                qty = int(qty)
+            except (TypeError, ValueError):
+                continue
+            if not pid or qty <= 0:
+                continue
+            if not active_products.filter(pk=pid).exists():
+                continue
+            lines.append({"product_id": int(pid), "quantity": qty})
+        if lines:
+            StockRequest.objects.create(business=biz, requester_location=location, status="SUBMITTED", lines=lines)
+            messages.success(request, "Stock request sent to Production.")
+        else:
+            messages.error(request, "Add at least one product with a quantity to request.")
+        return redirect("sales:stock_request_create")
+
+    my_requests = StockRequest.objects.filter(requester_location=location).order_by("-created_at")[:20] if location else []
+    for r in my_requests:
+        r.lines_display = [
+            {"product": active_products.filter(pk=l.get("product_id")).first() or
+                        Product.objects.filter(pk=l.get("product_id")).first(),
+             "quantity": l.get("quantity")}
+            for l in r.lines
+        ]
+    return render(request, "sales/stock_request_create.html", {
+        "location": location, "active_products": active_products, "my_requests": my_requests,
+    })
 
 
 @login_required

@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}New Distribution{% endblock %}
 {% block content %}
-<div class="card" style="max-width:560px;margin:0 auto">
+<div class="card" style="max-width:640px;margin:0 auto">
   <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Send Stock</h2>
   <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Only priced (active) products can be distributed — draft products aren't offered below.</p>
   {% if error %}<p style="color:var(--red);font-weight:600;font-size:.9rem;margin-bottom:.5rem">{{ error }}</p>{% endif %}
+  {{ batch_data|json_script:"batchData" }}
   <form method="post" class="stack" id="distForm" onsubmit="return validateDistribution()">
     {% csrf_token %}
     <label>Send to</label>
@@ -25,10 +26,11 @@
               </option>
             {% endfor %}
           </select>
-          <input type="number" name="quantity" class="dist-qty" min="1" value="1" required oninput="clampQty(this)">
+          <input type="number" name="quantity" class="dist-qty" min="1" value="1" required oninput="onQtyInput(this)">
           <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
         </div>
         <p class="dist-available" style="color:var(--muted);font-size:.8rem;margin-top:.15rem">Pick a product to see stock available.</p>
+        <div class="dist-batch-breakdown" style="margin-top:.4rem"></div>
       </div>
     </div>
     <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addCartRow()">+ Add item</button>
@@ -39,7 +41,16 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  .dist-batch-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+  .dist-batch-table th, .dist-batch-table td { padding: .3rem .5rem; text-align: left; border-bottom: 1px solid #EDF1F5; }
+  .dist-batch-table th { color: var(--muted); font-weight: 700; text-transform: uppercase; font-size: .7rem; }
+  .dist-batch-take { font-weight: 700; color: var(--ternah-blue); }
+  .dist-batch-none { color: var(--muted); font-size: .78rem; }
+</style>
 <script>
+function getBatchData() { return JSON.parse(document.getElementById("batchData").textContent); }
+
 function updateAvailable(sel) {
   const item = sel.closest(".cart-item");
   const qtyInput = item.querySelector(".dist-qty");
@@ -49,10 +60,35 @@ function updateAvailable(sel) {
   qtyInput.max = stock > 0 ? stock : 1;
   if (parseInt(qtyInput.value) > stock) qtyInput.value = stock > 0 ? stock : 1;
   hint.textContent = opt && opt.value ? `Available: ${stock}` : "Pick a product to see stock available.";
+  renderBatchBreakdown(item);
+}
+function onQtyInput(input) {
+  clampQty(input);
+  renderBatchBreakdown(input.closest(".cart-item"));
 }
 function clampQty(input) {
   const max = parseInt(input.max) || 0;
   if (max && parseInt(input.value) > max) input.value = max;
+}
+function renderBatchBreakdown(item) {
+  const sel = item.querySelector(".dist-product");
+  const qty = parseInt(item.querySelector(".dist-qty").value) || 0;
+  const box = item.querySelector(".dist-batch-breakdown");
+  const opt = sel.selectedOptions[0];
+  if (!opt || !opt.value) { box.innerHTML = ""; return; }
+  const batches = getBatchData()[opt.value] || [];
+  if (!batches.length) { box.innerHTML = '<p class="dist-batch-none">No completed batches on record for this product.</p>'; return; }
+
+  let remaining = qty;
+  const rows = batches.map(b => {
+    const take = Math.max(0, Math.min(remaining, b.remaining));
+    remaining -= take;
+    return `<tr><td>${b.batch_number}</td><td>${b.manufacture_date}</td><td>${b.expiry_date || '—'}</td>` +
+           `<td>${b.remaining}</td><td class="dist-batch-take">${take > 0 ? take : '—'}</td></tr>`;
+  }).join("");
+  box.innerHTML = `<div class="table-scroll"><table class="dist-batch-table">` +
+    `<tr><th>Batch</th><th>Made</th><th>Expires</th><th>Available</th><th>Sending</th></tr>${rows}</table></div>` +
+    (remaining > 0 ? `<p class="dist-batch-none" style="color:var(--red)">Requested ${remaining} more than any recorded batch can account for.</p>` : "");
 }
 function addCartRow() {
   const rows = document.getElementById("cartRows");
@@ -60,6 +96,7 @@ function addCartRow() {
   item.querySelectorAll("select, input").forEach(el => { if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "1"; });
   item.querySelector(".dist-qty").removeAttribute("max");
   item.querySelector(".dist-available").textContent = "Pick a product to see stock available.";
+  item.querySelector(".dist-batch-breakdown").innerHTML = "";
   rows.appendChild(item);
 }
 function removeCartRow(btn) {

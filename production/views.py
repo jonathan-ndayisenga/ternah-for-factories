@@ -139,6 +139,34 @@ def product_price_edit(request, pk):
     })
 
 
+def _batches_available(product):
+    """COMPLETED batches of this product still holding stock at the factory,
+    earliest expiry first (nulls last), then oldest manufactured — the same
+    FEFO order raw materials already dispense in."""
+    return ProductionBatch.objects.filter(product=product, status="COMPLETED", remaining_quantity__gt=0) \
+        .order_by(F("expiry_date").asc(nulls_last=True), "manufacture_date", "date", "id")
+
+
+def _dispense_finished_goods_fefo(dist, product, qty):
+    """Walks this product's batches FEFO, writing one DistributionLine per
+    batch actually touched (so 'which batch went out' is a real record, not
+    a guess) and decrementing each batch's own remaining_quantity."""
+    remaining = qty
+    for batch in _batches_available(product):
+        if remaining <= 0:
+            break
+        take = min(remaining, batch.remaining_quantity)
+        DistributionLine.objects.create(distribution=dist, product=product, quantity=take, batch=batch)
+        batch.remaining_quantity -= take
+        batch.save(update_fields=["remaining_quantity"])
+        remaining -= take
+    if remaining > 0:
+        # more was requested than any batch could account for (e.g. stale
+        # per-batch figures) — still honour the sale against the aggregate
+        # stock, just without a batch attached to this last slice
+        DistributionLine.objects.create(distribution=dist, product=product, quantity=remaining, batch=None)
+
+
 @distribution_staff_required
 def distribution_create(request):
     """Production sends stock to a receiver (rep or outlet). Only ACTIVE
@@ -155,8 +183,14 @@ def distribution_create(request):
         item.product_id: item.quantity
         for item in StockItem.objects.filter(location=factory_store, product__in=active_products)
     } if factory_store else {}
+    batch_data = {}
     for p in active_products:
         p.available_stock = stock_by_product.get(p.id, 0)
+        batch_data[str(p.id)] = [
+            {"batch_number": b.batch_number, "manufacture_date": b.manufacture_date.strftime("%d %b %Y") if b.manufacture_date else "—",
+             "expiry_date": b.expiry_date.strftime("%d %b %Y") if b.expiry_date else None, "remaining": b.remaining_quantity}
+            for b in _batches_available(p)
+        ]
 
     error = None
     if request.method == "POST":
@@ -196,7 +230,7 @@ def distribution_create(request):
             )
             for product, qty in lines:
                 store_item = StockItem.objects.filter(location=factory_store, product=product).first()
-                DistributionLine.objects.create(distribution=dist, product=product, quantity=qty)
+                _dispense_finished_goods_fefo(dist, product, qty)
                 store_item.quantity -= qty
                 store_item.save(update_fields=["quantity"])
                 StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,
@@ -205,7 +239,7 @@ def distribution_create(request):
             return redirect("production:distributions")
 
     return render(request, "production/distribution_create.html", {
-        "locations": locations, "active_products": active_products, "error": error,
+        "locations": locations, "active_products": active_products, "error": error, "batch_data": batch_data,
     })
 
 
@@ -540,11 +574,12 @@ def batch_complete(request, pk):
         batch.actual_quantity = actual
         batch.unit_cost_at_production = (total_cost / actual).quantize(Decimal("0.0001"))
         batch.total_cost = total_cost.quantize(Decimal("0.01"))
+        batch.remaining_quantity = actual   # this batch's own share of the factory store, undistributed so far
         batch.status = "COMPLETED"
         batch.manufacture_date = manufacture_date
         batch.expiry_date = expiry_date
-        batch.save(update_fields=["actual_quantity", "unit_cost_at_production", "total_cost", "status",
-                                  "manufacture_date", "expiry_date"])
+        batch.save(update_fields=["actual_quantity", "unit_cost_at_production", "total_cost", "remaining_quantity",
+                                  "status", "manufacture_date", "expiry_date"])
 
         QAReport.objects.create(
             batch=batch, quality_notes=request.POST.get("quality_notes", "").strip(),
@@ -610,7 +645,7 @@ def stock_request_fulfill(request, pk):
             store_item = StockItem.objects.filter(location=factory_store, product=product).first()
             if not store_item or store_item.quantity < qty:
                 continue
-            DistributionLine.objects.create(distribution=dist, product=product, quantity=qty)
+            _dispense_finished_goods_fefo(dist, product, qty)
             store_item.quantity -= qty
             store_item.save(update_fields=["quantity"])
             StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,

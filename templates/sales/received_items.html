@@ -10,12 +10,13 @@
 {% else %}
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Date</th><th>Product</th><th>Quantity</th><th>Delivery Note</th><th>Your selling price</th></tr>
+  <tr><th>Date</th><th>Product</th><th>Quantity</th><th>Batch</th><th>Delivery Note</th><th>Your selling price</th></tr>
   {% for line in lines %}
   <tr>
     <td>{{ line.distribution.date|date:"d M Y" }}</td>
     <td>{{ line.product.name }}</td>
     <td>{{ line.quantity }}</td>
+    <td style="color:var(--muted)">{{ line.batch.batch_number|default:"—" }}</td>
     <td>{{ line.distribution.delivery_note_number }}</td>
     <td>
       {% for label, price in line.your_prices %}
@@ -23,7 +24,7 @@
       {% empty %}<span style="color:var(--muted)">Not priced yet</span>{% endfor %}
     </td>
   </tr>
-  {% empty %}<tr><td colspan="5" style="color:var(--muted)">Nothing received yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="6" style="color:var(--muted)">Nothing received yet.</td></tr>{% endfor %}
 </table>
 </div>
 {% endif %}

@@ -139,6 +139,7 @@ class ProductionBatch(TimeStamped):
     actual_quantity = models.PositiveIntegerField(null=True, blank=True)
     unit_cost_at_production = models.DecimalField(max_digits=14, decimal_places=4, default=0)
     total_cost = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    remaining_quantity = models.PositiveIntegerField(default=0)   # this batch's own share of the factory store, FEFO
     status = models.CharField(max_length=10, choices=STATUS, default="PLANNED")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     manufacture_date = models.DateField(null=True, blank=True)   # set at Complete & QA, not at dispensing
@@ -181,3 +182,5 @@ class DistributionLine(models.Model):
     distribution = models.ForeignKey(Distribution, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
     quantity = models.PositiveIntegerField()
+    batch = models.ForeignKey(ProductionBatch, null=True, blank=True, on_delete=models.PROTECT,
+                              related_name="distribution_lines")   # which batch this quantity came from (FEFO)
