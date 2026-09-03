@@ -311,7 +311,7 @@
       </div>
 
       <nav class="sidebar-nav">
-        {% if request.resolver_match.url_name == "home" and request.user.role == "OWNER" or request.resolver_match.url_name == "home" and request.user.role == "MANAGER" %}
+        {% if request.resolver_match.url_name == "home" %}
           <p style="color:rgba(255,255,255,.45);font-size:.82rem;padding:.4rem .65rem">Pick a tile to get started.</p>
         {% elif request.user.is_superuser %}
           <a class="nav-link" href="{% url 'home' %}">

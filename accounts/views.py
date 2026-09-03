@@ -46,6 +46,25 @@ def owner_tiles():
     ]
 
 
+def single_role_tile(role):
+    """Cashier, Sales Rep, and Production each have exactly one place to go
+    — still shown as a real Home screen (one tile) rather than skipped
+    straight past, so Home behaves the same way for everyone and is always
+    a real landing page to come back to, not a special case for Owner/
+    Manager only."""
+    icons = {
+        "CASHIER": '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
+        "PRODUCTION": '<path d="M10 2v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 8.5V2"/><path d="M8.5 2h7M7 15h10"/>',
+        "SALES_REP": '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>',
+    }
+    labels = {"CASHIER": "Cashier", "SALES_REP": "Sales Rep", "PRODUCTION": "Production"}
+    descs = {"CASHIER": "Ring up sales at your outlet", "SALES_REP": "Sell out of your own stock",
+             "PRODUCTION": "Formulas, batches, distribution, stock requests"}
+    hrefs = {"CASHIER": reverse("sales:pos"), "SALES_REP": reverse("sales:pos"),
+             "PRODUCTION": reverse("production:dashboard")}
+    return [{"key": role.lower(), "label": labels[role], "icon": icons[role], "desc": descs[role], "href": hrefs[role]}]
+
+
 def manager_tiles(user):
     icons = {
         "branch": '<path d="M4 19V10M12 19V5M20 19v-6"/><path d="M3 19h18"/>',
