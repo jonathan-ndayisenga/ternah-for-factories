@@ -27,11 +27,12 @@ can_manage_users = user_passes_test(lambda u: u.is_authenticated and u.role in (
 
 
 def _modules_for_role(biz, role):
-    """The Production module only makes sense for Production staff — a
-    manager, cashier or rep never needs it offered, regardless of what else
-    the business subscribes to."""
+    """The Production module only makes sense for Production staff, or a
+    manager the owner has trusted with it too (it's what makes 'Production'
+    show up as a switchable view in her own nav) — a cashier or rep never
+    needs it offered, regardless of what else the business subscribes to."""
     modules = Module.objects.filter(modulesubscription__business=biz, modulesubscription__is_active=True).distinct()
-    if role != "PRODUCTION":
+    if role not in ("PRODUCTION", "MANAGER"):
         modules = modules.exclude(code="PRODUCTION")
     return modules
 

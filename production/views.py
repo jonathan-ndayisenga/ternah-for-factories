@@ -26,7 +26,21 @@ catalog_staff_required = user_passes_test(
     lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER", "PRODUCTION"))
 distribution_staff_required = user_passes_test(
     lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER", "PRODUCTION"))
-production_staff_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "PRODUCTION"))
+
+
+def _has_production_access(u):
+    """Production staff and Owner always have it; a Manager only does once
+    the Owner has actually granted her the Production module — matches
+    User.switchable_views(), which is what puts 'Production' in her nav
+    switcher in the first place."""
+    if not u.is_authenticated:
+        return False
+    if u.role in ("OWNER", "PRODUCTION"):
+        return True
+    return u.role == "MANAGER" and u.modules.filter(code="PRODUCTION").exists()
+
+
+production_staff_required = user_passes_test(_has_production_access)
 
 TIER_LABELS = [("RETAIL", "retail_price", "Retail"), ("WHOLESALE", "wholesale_price", "Wholesale"),
                ("DISTRIBUTION", "distribution_price", "Distribution")]
