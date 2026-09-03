@@ -20,6 +20,7 @@ ACCOUNT_DEFS = [
     ("1010", "Mobile Money", "ASSET"),
     ("1020", "Bank", "ASSET"),
     ("1100", "Accounts Receivable", "ASSET"),
+    ("1110", "Inter-Outlet Transfers (clearing)", "ASSET"),
     ("1200", "Raw Materials Inventory", "ASSET"),
     ("1210", "Finished Goods Inventory", "ASSET"),
     ("2000", "Accounts Payable", "LIABILITY"),
@@ -68,6 +69,12 @@ def post_sale(sale):
     if sale.payment_method == "CREDIT":
         lines.append((accounts["1100"], sale.total, 0))
         source = "CREDIT_SALE"
+    elif sale.payment_method == "OUTLET_TRANSFER":
+        # no real cash moved — clears against the same 1110 account the
+        # receiving outlet's auto-posted expense credits, so it nets to
+        # zero across the business while still showing as revenue here
+        lines.append((accounts["1110"], sale.total, 0))
+        source = "OUTLET_TRANSFER_OUT"
     else:
         pay_account = accounts[PAYMENT_ACCOUNT_CODES.get(sale.payment_method, "1000")]
         lines.append((pay_account, sale.total, 0))
@@ -100,6 +107,19 @@ def post_expense(expense):
     return _post(expense.business, expense.location.branch, expense.date, "EXPENSE",
                 f"expense:{expense.pk}", memo,
                 [(accounts["5100"], expense.amount, 0), (accounts["1000"], 0, expense.amount)],
+                actor=expense.recorded_by)
+
+
+def post_outlet_transfer_expense(expense):
+    """The receiving outlet's side of an inter-outlet transfer — an expense
+    that clears against the 1110 account the sender's Sale debited, rather
+    than Cash (post_expense's usual credit side), since no real money left
+    this outlet's till."""
+    accounts = get_accounts(expense.business)
+    memo = expense.category + (f" — {expense.note}" if expense.note else "")
+    return _post(expense.business, expense.location.branch, expense.date, "OUTLET_TRANSFER_IN",
+                f"expense:{expense.pk}", memo,
+                [(accounts["5100"], expense.amount, 0), (accounts["1110"], 0, expense.amount)],
                 actor=expense.recorded_by)
 
 

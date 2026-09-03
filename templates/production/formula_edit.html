@@ -5,7 +5,9 @@
   <h2>Formula — {{ product.name }}</h2>
   <span class="spacer"></span>
   {% if current %}
-    {% if current.status == "APPROVED" %}<span class="pill active">v{{ current.version }} Approved</span>
+    {% if current.status == "APPROVED" %}
+      <span class="pill active">v{{ current.version }} Approved</span>
+      {% if not current.is_active %}<span class="pill locked">Inactive</span>{% endif %}
     {% else %}<span class="pill warning">v{{ current.version }} Draft</span>{% endif %}
   {% endif %}
 </div>
@@ -13,6 +15,11 @@
 {% if current and current.status == "APPROVED" %}
 <div class="card" style="margin-bottom:1rem">
   <h3>Approved formula — version {{ current.version }}</h3>
+  {% if not current.is_active %}
+  <p style="color:var(--red);font-size:.85rem;margin-bottom:.5rem">
+    Inactive — this formula can no longer be selected for a new production batch.
+  </p>
+  {% endif %}
   <div class="table-scroll">
   <table class="list">
     <tr><th>Raw Material</th><th>Qty per unit</th></tr>
@@ -20,11 +27,26 @@
   </table>
   </div>
   <p style="margin-top:.75rem;font-weight:700;color:var(--ternah-navy)">Unit production cost: UGX {{ unit_cost|floatformat:4 }}</p>
-  <form method="post" style="margin-top:1rem">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="new_version">
-    <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">Edit (creates version {{ current.version|add:1 }})</button>
-  </form>
+  <div style="display:flex;gap:.6rem;margin-top:1rem;flex-wrap:wrap">
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="new_version">
+      <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="return confirm('Create a new draft version (v{{ current.version|add:1 }}) to edit? The approved v{{ current.version }} recipe will stay pinned to any batches already made with it.')">Edit (creates version {{ current.version|add:1 }})</button>
+    </form>
+    {% if current.is_active %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="deactivate">
+      <button class="btn ghost" style="background:#FDECEA;color:var(--red)" onclick="return confirm('Deactivate this formula? It will no longer be selectable for new production batches until reactivated.')">Deactivate</button>
+    </form>
+    {% else %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="reactivate">
+      <button class="btn ghost" style="background:#D6EAD8;color:var(--green)" onclick="return confirm('Reactivate this formula so it can be selected for new production batches again?')">Reactivate</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 {% else %}
 <div class="card">
@@ -57,8 +79,9 @@
     <p style="margin-top:1rem;font-weight:700;color:var(--ternah-navy)">Live unit production cost: <span id="costPreview">UGX 0.0000</span></p>
 
     <div style="display:flex;gap:.6rem;margin-top:1rem">
-      <button class="btn" type="submit">Save draft</button>
-      <button class="btn ghost" style="background:#D6EAD8;color:var(--green)" type="submit" onclick="document.getElementById('formAction').value='approve'">Save & Approve</button>
+      <button class="btn" type="submit" onclick="return confirm('Save this formula as a draft?')">Save draft</button>
+      <button class="btn ghost" style="background:#D6EAD8;color:var(--green)" type="submit"
+              onclick="document.getElementById('formAction').value='approve'; return confirm('Save & approve this formula? Once approved it locks — any further edits create a new version rather than changing this one, and it becomes selectable for new production batches.');">Save &amp; Approve</button>
     </div>
   </form>
 </div>

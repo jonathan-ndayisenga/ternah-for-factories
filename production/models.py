@@ -4,11 +4,21 @@ from django.db import models
 from core.models import TimeStamped
 
 
+# Suggestions only, offered via a <datalist> on the form — unit_of_measure
+# itself is free text, so anything typed that isn't in this list is fine too.
+UOM_SUGGESTIONS = [
+    "mg", "g", "kg", "tonne", "ml", "L", "pcs", "dozen", "box", "bottle",
+    "sachet", "roll", "bag", "tin", "drum", "carton", "pack",
+]
+
+
 class RawMaterial(TimeStamped):
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
     name = models.CharField(max_length=120)
-    unit_of_measure = models.CharField(max_length=10, choices=[
-        ("L", "Litres"), ("ml", "Millilitres"), ("kg", "Kilograms"), ("g", "Grams"), ("pcs", "Pieces")])
+    # Free text, not a fixed choice list — a set of common units is offered
+    # via the form's datalist, but the operator can type anything (e.g. "roll",
+    # "sachet", "dozen") and it's saved as-is.
+    unit_of_measure = models.CharField(max_length=20)
     reorder_level = models.DecimalField(max_digits=12, decimal_places=3, default=0)
 
     def current_stock(self):
@@ -102,6 +112,7 @@ class ProductFormula(TimeStamped):
     status = models.CharField(max_length=10, choices=[("DRAFT", "Draft"), ("APPROVED", "Approved")], default="DRAFT")
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     approved_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)   # deactivated formulas can't be picked for a new batch
 
     class Meta:
         unique_together = [("product", "version")]

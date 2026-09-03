@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Receipts — {{ product.name }}{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>Receipts — {{ product.name }}</h2>
+  <span class="spacer"></span>
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'finance:financial_reports' %}">&larr; Financial Reports</a>
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+{% include "partials/print_letterhead.html" with print_title=print_title %}
+
+<form method="get" class="no-print" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
+  <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">From</label>
+    <input name="from" type="date" value="{{ date_from }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
+  <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">To</label>
+    <input name="to" type="date" value="{{ date_to }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
+  <button class="btn">Filter</button>
+  {% if date_from or date_to %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:product_receipts' product.pk %}">All time</a>{% endif %}
+</form>
+
+<div class="grid cards-4">
+  <div class="card"><h3>Units Sold</h3><div class="big">{{ total_qty }}</div></div>
+  <div class="card"><h3>Total Revenue</h3><div class="big">UGX {{ total_revenue|floatformat:0 }}</div></div>
+</div>
+
+<div class="table-scroll" style="margin-top:1rem">
+<table class="list">
+  <tr><th>Date</th><th>Receipt</th><th>Customer</th><th>Location</th><th>Qty</th><th>Unit Price</th><th>Line Total</th></tr>
+  {% for i in page_obj %}
+  <tr>
+    <td>{{ i.sale.created_at|date:"d M Y, H:i" }}</td>
+    <td><a href="{% url 'sales:receipt' i.sale.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ i.sale.receipt_number }}</a></td>
+    <td>{{ i.sale.customer_name|default:"Walk-in" }}</td>
+    <td>{{ i.sale.location.branch.name }}{% if i.sale.location.rep %} — {{ i.sale.location.rep.username }}{% endif %}</td>
+    <td>{{ i.quantity }}</td>
+    <td>UGX {{ i.unit_price|floatformat:0 }}</td>
+    <td style="font-weight:700">UGX {{ i.line_total|floatformat:0 }}</td>
+  </tr>
+  {% empty %}<tr><td colspan="7" style="color:var(--muted)">No sales of this product in range.</td></tr>{% endfor %}
+</table>
+</div>
+{% include "partials/pagination.html" %}
+{% include "partials/print_footer.html" %}
+{% endblock %}

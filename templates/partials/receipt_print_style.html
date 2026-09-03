@@ -1,0 +1,17 @@
+{% comment %}Usage: {% include "partials/receipt_print_style.html" %} — near the top of a receipt-shaped
+page's content block. Overrides the shared A4 letterhead/footer print rules (loaded earlier, in base.html)
+with a compact, single-column layout sized for an 80mm thermal/POS printer instead of a full page.{% endcomment %}
+<style>
+@media print {
+  @page { size: 80mm auto; margin: 3mm; }
+  body { font-size: 11px; }
+  .print-letterhead { flex-direction: column; align-items: center; text-align: center;
+                       border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
+  .print-letterhead-brand h1 { font-size: 14px; }
+  .print-letterhead-contact { text-align: center; }
+  .print-report-title { display: none; }
+  .card { border: none !important; box-shadow: none !important; padding: 0 !important; max-width: 100% !important; }
+  table.list th, table.list td { font-size: 10px; padding: 2px 3px; }
+  .print-footer { font-size: 9px; margin-top: 8px; padding-top: 4px; border-top: 1px dashed #000; }
+}
+</style>

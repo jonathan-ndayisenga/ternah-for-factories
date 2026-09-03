@@ -35,7 +35,8 @@ class StockItem(models.Model):
 
 class StockMovement(TimeStamped):
     REASONS = [("DISTRIBUTION", "Distribution"), ("SALE", "Sale"), ("SWAP_IN", "Swap in"),
-               ("SWAP_OUT", "Swap out"), ("ADJUSTMENT", "Adjustment"), ("RETURN", "Return")]
+               ("SWAP_OUT", "Swap out"), ("ADJUSTMENT", "Adjustment"), ("RETURN", "Return"),
+               ("TRANSFER_OUT", "Outlet transfer out"), ("TRANSFER_IN", "Outlet transfer in")]
     location = models.ForeignKey(InventoryLocation, on_delete=models.CASCADE, related_name="movements")
     product = models.ForeignKey("production.Product", on_delete=models.PROTECT)
     quantity = models.IntegerField()                 # signed
@@ -44,6 +45,7 @@ class StockMovement(TimeStamped):
     moved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     counterparty = models.ForeignKey(InventoryLocation, null=True, blank=True, on_delete=models.SET_NULL,
                                      related_name="counterparty_movements")   # the other side of the move, if any
+    counterparty_name = models.CharField(max_length=160, blank=True)   # free-text "to" for a walk-in customer sale
 
 
 class MomoAccount(TimeStamped):
@@ -90,7 +92,8 @@ class Debtor(TimeStamped):
 
 class Sale(TimeStamped):
     """POS sale — the same shape at an outlet or in a rep's hands."""
-    METHODS = [("CASH", "Cash"), ("CARD", "Card"), ("MOBILE_MONEY", "Mobile Money"), ("CREDIT", "Credit")]
+    METHODS = [("CASH", "Cash"), ("CARD", "Card"), ("MOBILE_MONEY", "Mobile Money"), ("CREDIT", "Credit"),
+               ("OUTLET_TRANSFER", "Outlet Transfer")]
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
     location = models.ForeignKey(InventoryLocation, on_delete=models.PROTECT, related_name="sales")
     receipt_number = models.CharField(max_length=40)              # RCP{INITIALS}-DDMMYY-SEQ
@@ -154,6 +157,33 @@ class StockRequest(TimeStamped):
     requester_location = models.ForeignKey(InventoryLocation, on_delete=models.CASCADE)
     status = models.CharField(max_length=10, choices=STATUS, default="DRAFT")
     lines = models.JSONField(default=list)           # [{product_id, quantity}]
+
+
+class OutletTransfer(TimeStamped):
+    """One outlet selling stock to another outlet within the system —
+    cashier-initiated (unlike production.Distribution, which is Production
+    -> outlet/rep). The sender's side is a normal Sale, posted immediately.
+    The receiver's stock only lands, and their matching Expense only posts,
+    once they confirm — same in-transit safety as Distribution."""
+    STATUS = [("SENT", "Sent"), ("RECEIVED", "Received"), ("DISPUTED", "Disputed")]
+    business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
+    from_location = models.ForeignKey(InventoryLocation, on_delete=models.PROTECT, related_name="transfers_sent")
+    to_location = models.ForeignKey(InventoryLocation, on_delete=models.PROTECT, related_name="transfers_received")
+    reference_number = models.CharField(max_length=40)          # TRF{INITIALS}-DDMMYY-SEQ
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=STATUS, default="SENT")
+    sale = models.OneToOneField(Sale, null=True, blank=True, on_delete=models.SET_NULL, related_name="outlet_transfer")
+    expense = models.OneToOneField(Expense, null=True, blank=True, on_delete=models.SET_NULL, related_name="outlet_transfer")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+                                   related_name="outlet_transfers_created")
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name="outlet_transfers_confirmed")
+
+
+class OutletTransferLine(models.Model):
+    transfer = models.ForeignKey(OutletTransfer, on_delete=models.CASCADE, related_name="lines")
+    product = models.ForeignKey("production.Product", on_delete=models.PROTECT)
+    quantity = models.PositiveIntegerField()
 
 
 class PendingAction(TimeStamped):

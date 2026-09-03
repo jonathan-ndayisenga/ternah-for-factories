@@ -41,9 +41,15 @@
     <input name="from" type="date" value="{{ date_from }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
   <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">to</label>
     <input name="to" type="date" value="{{ date_to }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
+  <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">Outlet / Branch</label>
+    <select name="branch" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px">
+      <option value="">All (consolidated)</option>
+      {% for b in branches %}<option value="{{ b.id }}" {% if selected_branch.id == b.id %}selected{% endif %}>{{ b.name }}</option>{% endfor %}
+    </select>
+  </div>
   <button class="btn">Apply</button>
-  {% if date_from or date_to %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'finance:financial_reports' %}">All time</a>{% endif %}
-  <span style="color:var(--muted);font-size:.82rem;align-self:center">Balance Sheet is always as of today — it's a snapshot, not a range.</span>
+  {% if date_from or date_to or selected_branch %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'finance:financial_reports' %}">Reset</a>{% endif %}
+  <span style="color:var(--muted);font-size:.82rem;align-self:center">Balance Sheet is always business-wide and as of today — cash/bank/capital aren't tracked per outlet.</span>
 </form>
 
 <input type="radio" name="report-tab" id="tab-trial" class="tab-toggle" checked>
@@ -59,7 +65,8 @@
 
 <div class="report-section" data-tab="trial">
   <div class="card">
-    <h3>Trial Balance{% if date_from or date_to %} — {{ date_from|default:"inception" }} to {{ date_to|default:"today" }}{% endif %}</h3>
+    <h3>Trial Balance{% if selected_branch %} — {{ selected_branch.name }}{% endif %}{% if date_from or date_to %} — {{ date_from|default:"inception" }} to {{ date_to|default:"today" }}{% endif %}</h3>
+    {% if selected_branch %}<p style="color:var(--muted);font-size:.85rem;margin-bottom:.5rem">Only this outlet's own sales, cost of goods, and expenses — raw material purchases, batch completions, and owner capital aren't any one outlet's, so they don't appear here.</p>{% endif %}
     <div class="table-scroll" style="margin-top:.5rem">
     <table class="list">
       <tr><th>Code</th><th>Account</th><th>Debit</th><th>Credit</th></tr>
@@ -88,7 +95,7 @@
 
 <div class="report-section" data-tab="pl">
   <div class="card" style="max-width:520px">
-    <h3>Profit &amp; Loss{% if date_from or date_to %} — {{ date_from|default:"inception" }} to {{ date_to|default:"today" }}{% endif %}</h3>
+    <h3>Profit &amp; Loss{% if selected_branch %} — {{ selected_branch.name }}{% endif %}{% if date_from or date_to %} — {{ date_from|default:"inception" }} to {{ date_to|default:"today" }}{% endif %}</h3>
     <div class="statement-line"><span>Sales Revenue</span><span class="amount">UGX {{ revenue|floatformat:0 }}</span></div>
     <div class="statement-line"><span>Cost of Goods Sold</span><span class="amount" style="color:var(--red)">(UGX {{ cogs|floatformat:0 }})</span></div>
     <div class="statement-line total"><span>Gross Profit</span><span class="amount">UGX {{ gross_profit|floatformat:0 }}</span></div>
@@ -156,7 +163,7 @@
       <tr><th>Product</th><th>Units Sold</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Margin</th></tr>
       {% for r in product_rows %}
       <tr>
-        <td><strong>{{ r.product__name }}</strong></td>
+        <td><a href="{% url 'reports:product_receipts' r.product_id %}{% if date_from or date_to %}?from={{ date_from }}&to={{ date_to }}{% endif %}" style="color:var(--ternah-blue);font-weight:700">{{ r.product__name }}</a></td>
         <td>{{ r.qty }}</td>
         <td>UGX {{ r.revenue|floatformat:0 }}</td>
         <td>UGX {{ r.cost|floatformat:0 }}</td>

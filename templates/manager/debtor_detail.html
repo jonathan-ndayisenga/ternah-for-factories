@@ -22,7 +22,7 @@
     {% for s in sales %}
     <tr>
       <td>{{ s.created_at|date:"d M Y" }}</td>
-      <td>{{ s.receipt_number }}</td>
+      <td><a href="{% url 'sales:receipt' s.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ s.receipt_number }}</a></td>
       <td>{% for line in s.items.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
       <td>UGX {{ s.total|floatformat:0 }}</td>
       <td>UGX {{ s.balance|floatformat:0 }}</td>
@@ -40,15 +40,16 @@
   <h3>Payment history</h3>
   <div class="table-scroll">
   <table class="list">
-    <tr><th>Date</th><th>Amount</th><th>Method</th><th>Received by</th></tr>
+    <tr><th>Date</th><th>Amount</th><th>Method</th><th>Received by</th><th></th></tr>
     {% for p in payments %}
     <tr>
       <td>{{ p.created_at|date:"d M Y, H:i" }}</td>
       <td style="color:var(--green);font-weight:700">UGX {{ p.amount|floatformat:0 }}</td>
       <td>{{ p.method }}</td>
       <td>{{ p.received_by.username|default:"—" }}</td>
+      <td><a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.35rem .7rem" href="{% url 'sales:debtor_payment_receipt' p.pk %}">Receipt</a></td>
     </tr>
-    {% empty %}<tr><td colspan="4" style="color:var(--muted)">No payments recorded yet.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">No payments recorded yet.</td></tr>{% endfor %}
   </table>
   </div>
 </div>

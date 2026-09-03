@@ -24,8 +24,6 @@
                        margin-top: .6rem; padding: .9rem 1rem; }
 
   .pos-side { display: flex; flex-direction: column; gap: .9rem; min-width: 0; }
-  .expense-toggle-label { font-size: .85rem; font-weight: 600; color: var(--ternah-blue); cursor: pointer;
-                           display: inline-block; padding: .3rem 0; }
   .expense-panel { max-height: 0; overflow: hidden; transition: max-height .2s ease; }
   .stat-toggle:checked ~ .expense-panel { max-height: 400px; }
 
@@ -104,7 +102,7 @@
           {% for s in sales_page_obj %}
           <tr>
             <td>{{ s.created_at|date:"H:i" }}</td>
-            <td>{{ s.receipt_number }}</td>
+            <td><a href="{% url 'sales:receipt' s.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ s.receipt_number }}</a></td>
             <td>{{ s.customer_name|default:"—" }}</td>
             <td>{{ s.get_payment_method_display }}</td>
             <td>UGX {{ s.total|floatformat:0 }}</td>
@@ -152,29 +150,50 @@
       </div>
     </div>
 
-    <div>
-      <input type="checkbox" id="statExpense" class="stat-toggle" style="display:none">
-      <label for="statExpense" class="expense-toggle-label">+ Record an expense</label>
-      <div class="expense-panel">
-        <div class="stat-panel-inner">
-          <form method="post" action="{% url 'sales:record_expense' %}" class="stack">
-            {% csrf_token %}
-            <label>Category</label>
-            <input name="category" required placeholder="e.g. Transport, Airtime">
-            <label>Amount (UGX)</label>
-            <input name="amount" type="number" min="1" required>
-            <label>Note <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-            <input name="note">
-            <button class="btn" style="margin-top:.8rem">Record expense</button>
-          </form>
+    <input type="checkbox" id="statExpenses" class="stat-toggle" {% if open_panel == "expenses" %}checked{% endif %}>
+    <label for="statExpenses" class="stat-card">
+      <span class="stat-label">Expenses <svg class="stat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+      <div class="stat-value">UGX {{ expense_total|floatformat:0 }}</div>
+      <div class="stat-sub">{{ expenses_page_obj.paginator.count }} today</div>
+    </label>
+    <div class="stat-panel" id="statExpensesPanel">
+      <div class="stat-panel-inner">
+        <form method="post" action="{% url 'sales:record_expense' %}" class="stack" style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid #EDF1F5">
+          {% csrf_token %}
+          <label>Category</label>
+          <input name="category" required placeholder="e.g. Transport, Airtime">
+          <label>Amount (UGX)</label>
+          <input name="amount" type="number" min="1" required>
+          <label>Note <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+          <input name="note">
+          <button class="btn" style="margin-top:.8rem">Record expense</button>
+        </form>
+        {% if expenses_page_obj.paginator.count %}
+        <div class="table-scroll">
+        <table class="list">
+          <tr><th>Time</th><th>Category</th><th>Note</th><th>By</th><th>Amount</th></tr>
+          {% for e in expenses_page_obj %}
+          <tr>
+            <td>{{ e.created_at|date:"H:i" }}</td>
+            <td>{{ e.category }}</td>
+            <td style="color:var(--muted)">{{ e.note|default:"—" }}</td>
+            <td>{{ e.recorded_by.username|default:"—" }}</td>
+            <td style="color:var(--red);font-weight:700">UGX {{ e.amount|floatformat:0 }}</td>
+          </tr>
+          {% endfor %}
+        </table>
         </div>
+        {% include "partials/pagination.html" with page_obj=expenses_page_obj page_param="expenses_page" extra_qs=expenses_extra_qs anchor="statExpensesPanel" %}
+        {% else %}
+          <p style="color:var(--muted);font-size:.9rem">No expenses recorded today.</p>
+        {% endif %}
       </div>
     </div>
   </div>
 
   <div class="cart-card">
     <h3>New Sale</h3>
-    <form method="post" action="{% url 'sales:record_sale' %}" id="saleForm" class="stack">
+    <form method="post" action="{% url 'sales:record_sale' %}" id="saleForm" class="stack" onsubmit="return validateSaleForm()">
       {% csrf_token %}
       {{ tier_labels|json_script:"tierLabels" }}
       {{ product_data|json_script:"productData" }}
@@ -187,7 +206,7 @@
             {% endfor %}
           </select>
           <select name="tier" class="cart-tier" required onchange="onTierChange(this)"></select>
-          <input type="number" name="quantity" min="1" value="1" required oninput="updateCartTotal()">
+          <input type="number" name="quantity" min="1" value="1" required oninput="onQtyInput(this)">
           <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
           <div class="custom-price-line">
             <input type="number" name="custom_price" step="0.01" placeholder="Type the agreed price" oninput="updateCartTotal()">
@@ -208,6 +227,7 @@
         <option value="MOBILE_MONEY" {% if not momo_accounts %}disabled{% endif %}>Mobile Money{% if not momo_accounts %} (no account set up){% endif %}</option>
         <option value="CARD" {% if not bank_accounts %}disabled{% endif %}>Card{% if not bank_accounts %} (no account set up){% endif %}</option>
         <option value="CREDIT">Credit</option>
+        {% if destination_outlets %}<option value="OUTLET_TRANSFER">Send to another outlet</option>{% endif %}
       </select>
 
       <div id="momoAccountField" style="display:none">
@@ -226,10 +246,22 @@
       </div>
       {% if not bank_accounts %}<p class="account-hint" id="bankHint" style="display:none">No bank account is set up yet — ask your manager to add one in Payment Accounts.</p>{% endif %}
 
-      <label>Customer name <span id="customerHint" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-      <input name="customer_name" id="customerName" placeholder="Who are you selling to?">
-      <label>Customer phone <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
-      <input name="customer_phone">
+      {% if destination_outlets %}
+      <div id="destinationField" style="display:none">
+        <label>Send to which outlet?</label>
+        <select name="to_location" id="destinationOutlet">
+          {% for loc in destination_outlets %}<option value="{{ loc.id }}">{{ loc.branch.name }}</option>{% endfor %}
+        </select>
+        <p class="account-hint" style="color:var(--muted)">Stock lands in their inventory once they confirm receipt; it'll show as an expense on their books automatically.</p>
+      </div>
+      {% endif %}
+
+      <div id="customerFields">
+        <label>Customer name <span id="customerHint" style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input name="customer_name" id="customerName" placeholder="Who are you selling to?">
+        <label>Customer phone <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input name="customer_phone">
+      </div>
 
       <button class="btn" style="margin-top:1rem;width:100%" type="submit">Record sale</button>
     </form>
@@ -245,6 +277,20 @@ function getTierLabels() { return JSON.parse(document.getElementById("tierLabels
 
 function onProductChange(productSelect) {
   syncTierOptions(productSelect);
+  applyStockMax(productSelect);
+}
+function applyStockMax(productSelect) {
+  const row = productSelect.closest(".cart-line");
+  const qtyInput = row.querySelector("input[name=quantity]");
+  const pd = getProductData()[productSelect.value];
+  const stock = pd ? pd.stock : 0;
+  qtyInput.max = stock > 0 ? stock : 1;
+  if (parseInt(qtyInput.value) > stock) qtyInput.value = stock > 0 ? stock : 1;
+}
+function onQtyInput(input) {
+  const max = parseInt(input.max) || 0;
+  if (max && parseInt(input.value) > max) input.value = max;
+  updateCartTotal();
 }
 function syncTierOptions(productSelect) {
   const row = productSelect.closest(".cart-line");
@@ -328,6 +374,30 @@ function toggleAccountFields() {
   if (momoHint) momoHint.style.display = method === "MOBILE_MONEY" ? "block" : "none";
   const bankHint = document.getElementById("bankHint");
   if (bankHint) bankHint.style.display = method === "CARD" ? "block" : "none";
+  const destField = document.getElementById("destinationField");
+  const isTransfer = method === "OUTLET_TRANSFER";
+  if (destField) {
+    destField.style.display = isTransfer ? "block" : "none";
+    destField.querySelector("select").required = isTransfer;
+  }
+  document.getElementById("customerFields").style.display = isTransfer ? "none" : "block";
+}
+function validateSaleForm() {
+  const data = getProductData();
+  const totals = {};
+  let ok = true;
+  document.querySelectorAll("#cartRows .cart-line").forEach(line => {
+    const sel = line.querySelector(".cart-product");
+    const qty = parseInt(line.querySelector("input[name=quantity]").value) || 0;
+    if (!sel.value || !qty) return;
+    totals[sel.value] = (totals[sel.value] || 0) + qty;
+    const pd = data[sel.value];
+    if (pd && totals[sel.value] > pd.stock) ok = false;
+  });
+  if (!ok) {
+    alert("You're trying to sell/send more of a product than you have in stock. Please adjust the quantities.");
+  }
+  return ok;
 }
 document.addEventListener("DOMContentLoaded", function () {
   toggleCustomerRequired();

@@ -8,9 +8,9 @@
           {% if request.user.role != "OWNER" %}disabled title="Managers see their own branch only"{% endif %}>
     {% if request.user.role == "OWNER" %}
       <option value="">All branches</option>
-      {% for b in branches %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+      {% for b in branches %}<option value="{{ b.id }}" data-kind="{{ b.kind }}">{{ b.name }}</option>{% endfor %}
     {% else %}
-      <option value="{{ request.user.branch_id }}" selected>{{ request.user.branch.name }}</option>
+      <option value="{{ request.user.branch_id }}" data-kind="{{ request.user.branch.kind }}" selected>{{ request.user.branch.name }}</option>
     {% endif %}
   </select>
   <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
@@ -22,7 +22,7 @@
 <div id="cards" hx-get="{% url 'reports:stats_cards' %}" hx-trigger="load, branchChanged from:body"
      hx-include="#branchFilter" hx-vals='js:{branch: document.getElementById("branchFilter").value}'></div>
 
-<div class="grid charts-2" style="margin-top:1rem">
+<div id="salesCharts" class="grid charts-2" style="margin-top:1rem">
   <div class="card"><h3>Daily Sales — last 30 days</h3><div class="chart-wrap"><canvas id="dailySales"></canvas></div></div>
   <div class="card"><h3>Revenue vs Gross Profit — 12 months</h3><div class="chart-wrap"><canvas id="monthlyGP"></canvas></div></div>
   {% if request.user.role == "OWNER" %}
@@ -32,6 +32,9 @@
   <div class="card"><h3>Payment Method Split</h3><div class="chart-wrap"><canvas id="paySplit"></canvas></div></div>
   <div class="card"><h3>Expenses by Category</h3><div class="chart-wrap"><canvas id="expenses"></canvas></div></div>
 </div>
+
+<!-- factory branch selected -> stock/production content instead of sales charts -->
+<div id="factorySnapshot" hidden style="margin-top:1rem"></div>
 {% include "partials/print_footer.html" %}
 {% endblock %}
 
@@ -74,10 +77,29 @@ function loadAll() {
     data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: [NAVY, BLUE, AMBER, GREEN, RED]}]},
     options: {responsive: true, maintainAspectRatio: false}}));
 }
-document.addEventListener("DOMContentLoaded", loadAll);
-document.getElementById("branchFilter").addEventListener("change", () => {
-  loadAll();
-  document.body.dispatchEvent(new Event("branchChanged"));   // HTMX re-loads the cards
-});
+function isFactorySelected() {
+  const sel = document.getElementById("branchFilter");
+  const opt = sel.selectedOptions[0];
+  return !!(opt && opt.dataset.kind === "FACTORY");
+}
+async function loadFactorySnapshot() {
+  const el = document.getElementById("factorySnapshot");
+  const b = document.getElementById("branchFilter").value;
+  const res = await fetch("{% url 'reports:factory_snapshot' %}" + (b ? "?branch=" + b : ""));
+  el.innerHTML = await res.text();
+}
+function refresh() {
+  const factory = isFactorySelected();
+  document.getElementById("salesCharts").hidden = factory;
+  document.getElementById("factorySnapshot").hidden = !factory;
+  if (factory) {
+    loadFactorySnapshot();
+  } else {
+    loadAll();
+  }
+  document.body.dispatchEvent(new Event("branchChanged"));   // HTMX re-loads the stat cards either way
+}
+document.addEventListener("DOMContentLoaded", refresh);
+document.getElementById("branchFilter").addEventListener("change", refresh);
 </script>
 {% endblock %}

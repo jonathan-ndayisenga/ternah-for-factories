@@ -26,6 +26,7 @@
       --role-production: #57606F;
     }
     * { box-sizing: border-box; margin: 0; }
+    [hidden] { display: none !important; }   /* beats any later .foo{display:...} rule by source order */
     html { -webkit-text-size-adjust: 100%; }
     body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
            overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
@@ -92,7 +93,7 @@
     .view-switch-item.active { background: rgba(37,99,235,.28); color: #fff; border-left-color: var(--ternah-blue); }
 
     .sidebar-footer { padding: .9rem 1.1rem; border-top: 1px solid rgba(255,255,255,.1); }
-    .sidebar-footer .btn.ghost { width: 100%; background: rgba(255,255,255,.1); }
+    .sidebar-footer .btn.ghost { width: 100%; background: rgba(255,255,255,.1); color: #fff; }
     .sidebar-footer .btn.ghost:hover { background: rgba(255,255,255,.18); }
 
     .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 100vh; }
@@ -111,6 +112,13 @@
                    flex-wrap: wrap; align-items: center; gap: .5rem 1rem; font-weight: 600;
                    font-size: .9rem; box-shadow: var(--shadow-sm); }
     .mode-banner .spacer { flex: 1; min-width: 0; }
+
+    .flash-messages { max-width: 1200px; margin: 1.5rem auto 0; padding: 0 1.25rem; display: flex;
+                       flex-direction: column; gap: .5rem; }
+    .flash-message { padding: .75rem 1.1rem; border-radius: 10px; font-weight: 600; font-size: .9rem;
+                      box-shadow: var(--shadow-sm); }
+    .flash-message.error { background: #FDECEA; color: var(--red); }
+    .flash-message.success { background: #D6EAD8; color: var(--green); }
 
     main { max-width: 1200px; margin: 1.5rem auto; padding: 0 1.25rem; width: 100%; }
     .page-head { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-bottom: 1rem; }
@@ -330,36 +338,21 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/><path d="M3 3l7 7M21 3l-7 7M3 21l7-7M21 21l-7-7"/></svg>
             Stock Movements
           </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'reports' and request.resolver_match.url_name == 'debtors_report' %}active{% endif %}"
+             href="{% url 'reports:debtors_report' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/><path d="M17 3.13a4 4 0 0 1 0 7.75M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+            Debtors Report
+          </a>
+          <a class="nav-link {% if request.resolver_match.namespace == 'reports' and request.resolver_match.url_name == 'rep_outlet_performance' %}active{% endif %}"
+             href="{% url 'reports:rep_outlet_performance' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            Rep & Outlet Performance
+          </a>
           <div class="nav-section-label">Finance</div>
-          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'cashbook' %}active{% endif %}"
-             href="{% url 'finance:cashbook' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-            Cashbook
-          </a>
-          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'journal' %}active{% endif %}"
-             href="{% url 'finance:journal' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-            Activity
-          </a>
-          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'general_ledger' %}active{% endif %}"
-             href="{% url 'finance:general_ledger' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H4v-2a4 4 0 0 1 4-4h.5"/><path d="M4 6a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"/><path d="M8 8h9M8 12h9M8 16h5"/></svg>
-            General Ledger
-          </a>
           <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'financial_reports' %}active{% endif %}"
              href="{% url 'finance:financial_reports' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-4"/></svg>
             Financial Reports
-          </a>
-          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'expense_journal' %}active{% endif %}"
-             href="{% url 'finance:expense_journal' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            Expense Journal
-          </a>
-          <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'payment_accounts' %}active{% endif %}"
-             href="{% url 'finance:payment_accounts' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 9V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/><path d="M22 12a2 2 0 0 1-2 2h-4a2 2 0 0 1 0-4h4a2 2 0 0 1 2 2z"/></svg>
-            Payment Accounts
           </a>
           <div class="nav-section-label">Manage</div>
           <a class="nav-link {% if request.resolver_match.namespace == 'core' and request.resolver_match.url_name != 'business_settings' %}active{% endif %}"
@@ -388,11 +381,6 @@
              href="{% url 'manager:dashboard' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V10M12 19V5M20 19v-6"/><path d="M3 19h18"/></svg>
             Dashboard
-          </a>
-          <a class="nav-link {% if request.resolver_match.namespace == 'manager' and request.resolver_match.url_name == 'debtors' %}active{% endif %}"
-             href="{% url 'manager:debtors' %}">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/><path d="M17 3.13a4 4 0 0 1 0 7.75M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
-            Debtors
           </a>
           <a class="nav-link {% if request.resolver_match.namespace == 'manager' and request.resolver_match.url_name == 'inventory' %}active{% endif %}"
              href="{% url 'manager:inventory' %}">
@@ -428,6 +416,11 @@
             Users
           </a>
           <div class="nav-section-label">Finance</div>
+          <a class="nav-link {% if request.resolver_match.namespace == 'manager' and request.resolver_match.url_name == 'debtors' %}active{% endif %}"
+             href="{% url 'manager:debtors' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/><path d="M17 3.13a4 4 0 0 1 0 7.75M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+            Debtors
+          </a>
           <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'cashbook' %}active{% endif %}"
              href="{% url 'finance:cashbook' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
@@ -446,7 +439,7 @@
           <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'expense_journal' %}active{% endif %}"
              href="{% url 'finance:expense_journal' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            Expense Journal
+            Expenses
           </a>
           <a class="nav-link {% if request.resolver_match.namespace == 'finance' and request.resolver_match.url_name == 'payment_accounts' %}active{% endif %}"
              href="{% url 'finance:payment_accounts' %}">
@@ -465,6 +458,13 @@
              href="{% url 'sales:received_items' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/><path d="M3 3l7 7"/><path d="m21 3-9 9"/></svg>
             Items Received
+          </a>
+          {% endif %}
+          {% if request.user.role == "CASHIER" %}
+          <a class="nav-link {% if request.resolver_match.url_name == 'outlet_transfers' %}active{% endif %}"
+             href="{% url 'sales:outlet_transfers' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/><path d="M3 3l7 7"/><path d="m21 3-9 9"/></svg>
+            Outlet Transfers
           </a>
           {% endif %}
         {% elif request.user.role == "PRODUCTION" %}
@@ -550,6 +550,13 @@
       {% endif %}
 
       <main>
+{% endif %}
+{% if messages %}
+<div class="flash-messages no-print">
+  {% for message in messages %}
+    <div class="flash-message {% if message.tags %}{{ message.tags }}{% endif %}">{{ message }}</div>
+  {% endfor %}
+</div>
 {% endif %}
 {% block content %}{% endblock %}
 {% if request.user.is_authenticated %}

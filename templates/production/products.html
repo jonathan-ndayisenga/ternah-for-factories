@@ -21,7 +21,17 @@
       {% elif p.status == "ARCHIVED" %}<span class="pill locked">Archived</span>
       {% else %}<span class="pill warning">Draft</span>{% endif %}
     </td>
-    <td>{% if p.latest_cost %}UGX {{ p.latest_cost|floatformat:2 }}{% else %}—{% endif %}</td>
+    <td>
+      {% if p.cost_stats %}
+        {% if p.cost_stats.min != p.cost_stats.max %}
+          <a href="{% url 'production:product_cost_history' p.pk %}" style="color:var(--ternah-blue);font-weight:700" title="Cost has varied across batches — click for history">
+            UGX {{ p.cost_stats.min|floatformat:0 }}&ndash;{{ p.cost_stats.max|floatformat:0 }}
+          </a>
+        {% else %}
+          <a href="{% url 'production:product_cost_history' p.pk %}" style="color:var(--ternah-navy)">UGX {{ p.cost_stats.latest|floatformat:2 }}</a>
+        {% endif %}
+      {% else %}—{% endif %}
+    </td>
     <td>{% if p.retail_price %}UGX {{ p.retail_price|floatformat:0 }}{% else %}—{% endif %}</td>
     <td>{% if p.wholesale_price %}UGX {{ p.wholesale_price|floatformat:0 }}{% else %}—{% endif %}</td>
     <td>{% if p.distribution_price %}UGX {{ p.distribution_price|floatformat:0 }}{% else %}—{% endif %}</td>

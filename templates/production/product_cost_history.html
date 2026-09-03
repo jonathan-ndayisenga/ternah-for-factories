@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Cost History — {{ product.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Cost History — {{ product.name }}</h2>
+  <span class="spacer"></span>
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:product_list' %}">&larr; Products</a>
+</div>
+
+{% if stats %}
+<div class="grid cards-4">
+  <div class="card"><h3>Latest Cost</h3><div class="big">UGX {{ stats.latest|floatformat:2 }}</div></div>
+  <div class="card"><h3>Lowest</h3><div class="big" style="color:var(--green)">UGX {{ stats.min|floatformat:2 }}</div></div>
+  <div class="card"><h3>Highest</h3><div class="big" style="color:var(--red)">UGX {{ stats.max|floatformat:2 }}</div></div>
+  <div class="card"><h3>Completed Batches</h3><div class="big">{{ stats.count }}</div></div>
+</div>
+{% if stats.min != stats.max %}
+<p style="color:var(--muted);font-size:.85rem;margin-top:.5rem">
+  Unit cost has varied across batches — usually driven by production yield or raw material price
+  changes between purchases. Pricing decisions should account for this range, not just the latest batch.
+</p>
+{% endif %}
+{% endif %}
+
+<div class="table-scroll" style="margin-top:1rem">
+<table class="list">
+  <tr><th>Batch</th><th>Date</th><th>Formula ver.</th><th>Target</th><th>Actual</th><th>Unit Cost</th><th>Total Cost</th><th></th></tr>
+  {% for b in batches %}
+  <tr>
+    <td><strong>{{ b.batch_number }}</strong></td>
+    <td>{{ b.date|date:"d M Y" }}</td>
+    <td>v{{ b.formula.version }}</td>
+    <td>{{ b.target_quantity }}</td>
+    <td>{{ b.actual_quantity|default:"—" }}</td>
+    <td style="font-weight:700{% if stats and b.unit_cost_at_production == stats.max and stats.min != stats.max %};color:var(--red){% elif stats and b.unit_cost_at_production == stats.min and stats.min != stats.max %};color:var(--green){% endif %}">
+      UGX {{ b.unit_cost_at_production|floatformat:4 }}
+    </td>
+    <td>UGX {{ b.total_cost|floatformat:0 }}</td>
+    <td><a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:production_batch_detail' b.pk %}">View batch</a></td>
+  </tr>
+  {% empty %}<tr><td colspan="8" style="color:var(--muted)">No completed batches yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

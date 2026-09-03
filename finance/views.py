@@ -11,6 +11,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 PAGE_SIZE = 25
@@ -22,6 +23,7 @@ def _paginate(request, items, page_size=PAGE_SIZE):
     qd.pop("page", None)
     return page_obj, qd.urlencode()
 
+from core.models import Branch
 from production.models import Distribution
 from sales.models import BankAccount, DailyOpeningBalance, DebtorPayment, Expense, MomoAccount, PendingAction, Sale, SaleItem
 from .models import JournalEntry, JournalLine, LedgerAccount
@@ -93,10 +95,11 @@ def cashbook(request):
     for s in Sale.objects.filter(business=biz, amount_paid__gt=0, **branch_filter).select_related("location", "served_by"):
         entries.append({"sort_date": s.created_at.date(), "when": s.created_at, "type": "Sale",
                         "ref": s.receipt_number, "method": s.get_payment_method_display(), "amount": s.amount_paid,
-                        "by": s.served_by})
+                        "by": s.served_by, "receipt_url": reverse("sales:receipt", args=[s.pk])})
     for p in DebtorPayment.objects.filter(debtor__business=biz, **debtor_branch_filter).select_related("debtor", "received_by"):
         entries.append({"sort_date": p.created_at.date(), "when": p.created_at, "type": "Debt Collection",
-                        "ref": p.debtor.name, "method": p.method, "amount": p.amount, "by": p.received_by})
+                        "ref": p.debtor.name, "method": p.method, "amount": p.amount, "by": p.received_by,
+                        "receipt_url": reverse("sales:debtor_payment_receipt", args=[p.pk])})
     for e in Expense.objects.filter(business=biz, **branch_filter).select_related("recorded_by"):
         entries.append({"sort_date": e.date, "when": _as_datetime(e.date), "type": "Expense",
                         "ref": e.category, "method": "—", "amount": -e.amount, "by": e.recorded_by})
@@ -250,6 +253,8 @@ def financial_reports(request):
     accounts = get_accounts(biz)
     date_from = request.GET.get("from", "")
     date_to = request.GET.get("to", "")
+    branch_id = request.GET.get("branch", "")
+    selected_branch = Branch.objects.filter(pk=branch_id, business=biz).first() if branch_id else None
 
     def balances_for(qs):
         agg = qs.values("ledger_account_id").annotate(d=Sum("debit"), c=Sum("credit"))
@@ -260,6 +265,12 @@ def financial_reports(request):
         period_lines = period_lines.filter(entry__date__gte=date_from)
     if date_to:
         period_lines = period_lines.filter(entry__date__lte=date_to)
+    if selected_branch:
+        # entries with no branch (raw material purchases, batch completions,
+        # owner capital) aren't any one outlet's — they simply drop out of a
+        # per-outlet trial balance, which is correct: each remaining entry
+        # is still fully self-contained, so debits still equal credits
+        period_lines = period_lines.filter(entry__branch=selected_branch)
     period_balances = balances_for(period_lines)
     all_time_balances = balances_for(JournalLine.objects.filter(entry__business=biz))
 
@@ -305,7 +316,7 @@ def financial_reports(request):
         item_qs = item_qs.filter(sale__created_at__date__lte=date_to)
     cost_expr = ExpressionWrapper(F("unit_cost") * F("quantity"), output_field=DecimalField(max_digits=16, decimal_places=2))
     product_rows = list(
-        item_qs.values("product__name")
+        item_qs.values("product_id", "product__name")
         .annotate(qty=Sum("quantity"), revenue=Sum("line_total"), cost=Sum(cost_expr))
         .order_by("-revenue")
     )
@@ -315,6 +326,7 @@ def financial_reports(request):
 
     return render(request, "finance/financial_reports.html", {
         "date_from": date_from, "date_to": date_to,
+        "branches": Branch.objects.filter(business=biz).order_by("name"), "selected_branch": selected_branch,
         "trial_rows": trial_rows, "total_debit": total_debit, "total_credit": total_credit,
         "revenue": revenue, "cogs": cogs, "gross_profit": gross_profit, "opex": opex, "net_profit": net_profit,
         "cash": cash, "momo": momo, "bank": bank, "receivable": receivable,

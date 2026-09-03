@@ -3,18 +3,21 @@ inventory (sales rep): today's sales, ring up a sale, log an expense, collect
 a debtor payment. Every sale records who it was sold to, cash or credit."""
 from decimal import Decimal, InvalidOperation
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
-from django.shortcuts import redirect, render
+from django.http import Http404
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from accounts.models import PRICE_TIERS
-from finance.services import post_debtor_payment, post_expense, post_sale
+from finance.services import post_debtor_payment, post_expense, post_outlet_transfer_expense, post_sale
 from production.models import Distribution, DistributionLine
 from .models import (
     BankAccount, DailyOpeningBalance, Debtor, DebtorPayment, Expense, InventoryLocation,
-    MomoAccount, Sale, SaleItem, StockItem, StockMovement,
+    MomoAccount, OutletTransfer, OutletTransferLine, Sale, SaleItem, StockItem, StockMovement,
 )
 
 POS_ROLES = ("CASHIER", "SALES_REP")
@@ -69,6 +72,7 @@ def pos(request):
         context["opening_balance"] = opening_balance
         today_sales = Sale.objects.filter(location=location, created_at__date=today).order_by("-created_at")
         debtors = [d for d in Debtor.objects.filter(location=location) if d.balance() > 0]
+        today_expenses = Expense.objects.filter(location=location, date=today).select_related("recorded_by").order_by("-created_at")
         stock_items = StockItem.objects.filter(location=location, quantity__gt=0).select_related("product")
         # only offer products priced for at least one tier this seller is allowed to use
         sellable = []
@@ -82,26 +86,35 @@ def pos(request):
                 "prices": {t: float(i.product.price_for_tier(t)) for t in i.available_tiers if t != "CUSTOM"},
                 "custom_min": float(i.product.custom_price_min) if i.product.custom_price_min is not None else None,
                 "custom_max": float(i.product.custom_price_max) if i.product.custom_price_max is not None else None,
+                "stock": i.quantity,
             }
         qd_base = request.GET.copy()
-        for key in ("sales_page", "debtors_page", "panel"):
+        for key in ("sales_page", "debtors_page", "expenses_page", "panel"):
             qd_base.pop(key, None)
         qd_sales = qd_base.copy(); qd_sales["panel"] = "sales"
         qd_debtors = qd_base.copy(); qd_debtors["panel"] = "debtors"
+        qd_expenses = qd_base.copy(); qd_expenses["panel"] = "expenses"
         sales_page = Paginator(today_sales, 15).get_page(request.GET.get("sales_page"))
         debtors_page = Paginator(debtors, 15).get_page(request.GET.get("debtors_page"))
+        expenses_page = Paginator(today_expenses, 15).get_page(request.GET.get("expenses_page"))
 
         context.update({
             "stock_items": sellable,
             "product_data": product_data,
             "sales_page_obj": sales_page,
             "debtors_page_obj": debtors_page,
+            "expenses_page_obj": expenses_page,
             "sales_extra_qs": qd_sales.urlencode(),
             "debtors_extra_qs": qd_debtors.urlencode(),
+            "expenses_extra_qs": qd_expenses.urlencode(),
             "today_total": sum((s.total for s in today_sales), Decimal("0")),
             "debtor_total": sum((d.balance() for d in debtors), Decimal("0")),
+            "expense_total": sum((e.amount for e in today_expenses), Decimal("0")),
             "open_panel": request.GET.get("panel", ""),
         })
+        if location.type == "OUTLET":
+            context["destination_outlets"] = InventoryLocation.objects.filter(
+                business=request.user.business, type="OUTLET").exclude(pk=location.pk).select_related("branch")
     return render(request, "sales/pos.html", context)
 
 
@@ -133,6 +146,37 @@ def record_sale(request):
             pk=request.POST.get("bank_account"), business=biz, is_active=True).first()
         if not bank_account:
             return redirect("sales:pos")   # no bank account set up/selected — nothing to record against
+
+    to_location = None
+    if method == "OUTLET_TRANSFER":
+        if location.type != "OUTLET":
+            messages.error(request, "Only an outlet can send stock to another outlet.")
+            return redirect("sales:pos")
+        to_location = InventoryLocation.objects.filter(
+            pk=request.POST.get("to_location"), business=biz, type="OUTLET").exclude(pk=location.pk).first()
+        if not to_location:
+            messages.error(request, "Pick a destination outlet to send stock to.")
+            return redirect("sales:pos")
+        customer_name = f"{to_location.branch.name} (outlet transfer)"
+
+        # guard rail: can never send more than this outlet actually has on
+        # the shelf — checked as a hard error here, not silently clamped,
+        # since it's the same reference number the receiving outlet's books
+        # will pick up as an expense, so it needs to be exactly right
+        requested = {}
+        for pid, qty in zip(request.POST.getlist("product"), request.POST.getlist("quantity")):
+            try:
+                qty = int(qty)
+            except (TypeError, ValueError):
+                continue
+            if pid and qty > 0:
+                requested[pid] = requested.get(pid, 0) + qty
+        for pid, total_qty in requested.items():
+            item = StockItem.objects.filter(location=location, product_id=pid).select_related("product").first()
+            if item and total_qty > item.quantity:
+                messages.error(request, f"Can't send {total_qty} of {item.product.name} "
+                                        f"— only {item.quantity} available in your stock.")
+                return redirect("sales:pos")
 
     allowed = _allowed_tiers(request)
     lines, subtotal = [], Decimal("0")
@@ -183,25 +227,120 @@ def record_sale(request):
         )
         amount_paid, balance = Decimal("0"), subtotal
 
+    customer_phone = request.POST.get("customer_phone", "").strip()
     seq = Sale.objects.filter(location=location, created_at__date=timezone.localdate()).count() + 1
     receipt = f"RCP-{timezone.localdate():%d%m%y}-{location.id}{seq:03d}"
     sale = Sale.objects.create(
         business=biz, location=location, receipt_number=receipt,
         served_by=request.user, acted_as=_acting_role(request) if request.user.role == "MANAGER" else "",
-        payment_method=method, customer_name=customer_name,
-        customer_phone=request.POST.get("customer_phone", "").strip(),
+        payment_method=method, customer_name=customer_name, customer_phone=customer_phone,
         paid_into_momo=momo_account, paid_into_bank=bank_account,
         debtor=debtor, subtotal=subtotal, total=subtotal, amount_paid=amount_paid, balance=balance,
     )
+    transfer = None
+    movement_reference = receipt
+    movement_counterparty_name = ""
+    if method == "OUTLET_TRANSFER":
+        seq2 = OutletTransfer.objects.filter(business=biz, date=timezone.localdate()).count() + 1
+        transfer = OutletTransfer.objects.create(
+            business=biz, from_location=location, to_location=to_location,
+            reference_number=f"TRF-{request.user.username[:4].upper()}-{timezone.localdate():%d%m%y}-{seq2:03d}",
+            date=timezone.localdate(), status="SENT", created_by=request.user, sale=sale,
+        )
+        movement_reference = transfer.reference_number   # shared reference across both legs of the transfer
+    elif customer_name:
+        movement_counterparty_name = f"{customer_name} ({customer_phone})" if customer_phone else customer_name
+
     for item, qty, unit_price, line_total in lines:
         SaleItem.objects.create(sale=sale, product=item.product, quantity=qty,
                                 unit_price=unit_price, unit_cost=item.buying_price, line_total=line_total)
         item.quantity -= qty
         item.save(update_fields=["quantity"])
-        StockMovement.objects.create(location=location, product=item.product, quantity=-qty,
-                                     reason="SALE", reference=receipt, moved_by=request.user)
+        StockMovement.objects.create(
+            location=location, product=item.product, quantity=-qty,
+            reason="TRANSFER_OUT" if method == "OUTLET_TRANSFER" else "SALE",
+            reference=movement_reference, moved_by=request.user,
+            counterparty=to_location if method == "OUTLET_TRANSFER" else None,
+            counterparty_name=movement_counterparty_name,
+        )
+        if transfer:
+            OutletTransferLine.objects.create(transfer=transfer, product=item.product, quantity=qty)
     post_sale(sale)
-    return redirect("sales:pos")
+
+    if transfer:
+        messages.success(request, f"Sent to {to_location.branch.name} — reference {transfer.reference_number}. "
+                                  f"It'll land in their inventory once they confirm receipt.")
+    return redirect(f"{reverse('sales:receipt', args=[sale.pk])}?auto_print=1")
+
+
+@login_required
+@pos_required
+def outlet_transfers(request):
+    """A cashier/rep's own view of stock they've sent to, or received from,
+    another outlet — with status, so 'sent but not yet confirmed' is visible
+    without having to ask the other side."""
+    location = _pos_location(request)
+    sent = received = []
+    if location:
+        sent = list(OutletTransfer.objects.filter(from_location=location)
+                    .select_related("to_location__branch").prefetch_related("lines__product")
+                    .order_by("-date", "-id"))
+        received = list(OutletTransfer.objects.filter(to_location=location)
+                        .select_related("from_location__branch").prefetch_related("lines__product")
+                        .order_by("-date", "-id"))
+    return render(request, "sales/outlet_transfers.html", {"location": location, "sent": sent, "received": received})
+
+
+@login_required
+@user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER"))
+def outlet_transfer_confirm(request, pk):
+    """Receiver's side of the loop: stock only actually lands in their
+    inventory once they confirm, and only then does the matching expense
+    post to their books — same in-transit safety as production.Distribution.
+    Owner/Manager only, same precedent as confirming a Distribution."""
+    next_url = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        next_url = "manager:inventory"
+
+    biz = request.user.business
+    transfer = get_object_or_404(OutletTransfer, pk=pk, business=biz, status="SENT")
+    if request.user.role == "MANAGER" and transfer.to_location.branch_id != request.user.branch_id:
+        return redirect(next_url)
+
+    action = request.POST.get("action")
+    if action == "confirm":
+        for line in transfer.lines.select_related("product"):
+            # carry the sender's current cost basis over — this becomes the
+            # receiving outlet's buying price for this product, same as
+            # every other place stock lands (see production.batch_complete
+            # and production.distribution_confirm)
+            source_cost = StockItem.objects.filter(
+                location=transfer.from_location, product=line.product).values_list("buying_price", flat=True).first() or 0
+            item, _ = StockItem.objects.get_or_create(
+                location=transfer.to_location, product=line.product,
+                defaults={"buying_price": source_cost, "selling_price": 0},
+            )
+            item.quantity += line.quantity
+            item.buying_price = source_cost
+            item.save(update_fields=["quantity", "buying_price"])
+            StockMovement.objects.create(location=transfer.to_location, product=line.product, quantity=line.quantity,
+                                         reason="TRANSFER_IN", reference=transfer.reference_number,
+                                         moved_by=request.user, counterparty=transfer.from_location)
+        expense = Expense.objects.create(
+            business=biz, location=transfer.to_location, category="Inter-Outlet Stock Transfer",
+            amount=transfer.sale.total if transfer.sale else 0,
+            note=f"From {transfer.from_location.branch.name} — ref {transfer.reference_number}",
+            date=timezone.localdate(), recorded_by=request.user,
+        )
+        post_outlet_transfer_expense(expense)
+        transfer.status = "RECEIVED"
+        transfer.confirmed_by = request.user
+        transfer.expense = expense
+        transfer.save(update_fields=["status", "confirmed_by", "expense"])
+    elif action == "dispute":
+        transfer.status = "DISPUTED"
+        transfer.save(update_fields=["status"])
+    return redirect(next_url)
 
 
 @login_required
@@ -220,7 +359,7 @@ def record_expense(request):
                 amount=amount, note=request.POST.get("note", "").strip(),
                 date=timezone.localdate(), recorded_by=request.user)
             post_expense(expense)
-    return redirect("sales:pos")
+    return redirect(f"{reverse('sales:pos')}?panel=expenses")
 
 
 @login_required
@@ -302,3 +441,37 @@ def record_payment(request):
             open_sale.save(update_fields=["balance", "amount_paid"])
             remaining -= applied
     return redirect(next_url)
+
+
+def _can_view_location(request, location):
+    """Same scoping rule everywhere a receipt might be opened: owner sees
+    everything, manager their own branch, cashier/rep only their own till."""
+    if request.user.role == "OWNER":
+        return True
+    if request.user.role == "MANAGER":
+        return location.branch_id == request.user.branch_id
+    if request.user.role in POS_ROLES:
+        return location.id == getattr(_pos_location(request), "id", None)
+    return False
+
+
+@login_required
+def receipt(request, pk):
+    sale = get_object_or_404(Sale, pk=pk, business=request.user.business)
+    if not _can_view_location(request, sale.location):
+        raise Http404
+    return render(request, "sales/receipt.html", {
+        "sale": sale, "items": sale.items.select_related("product"),
+        "print_title": f"Receipt {sale.receipt_number}",
+    })
+
+
+@login_required
+def debtor_payment_receipt(request, pk):
+    payment = get_object_or_404(DebtorPayment, pk=pk, debtor__business=request.user.business)
+    if not _can_view_location(request, payment.debtor.location):
+        raise Http404
+    return render(request, "sales/debtor_payment_receipt.html", {
+        "payment": payment, "debtor": payment.debtor, "balance_after": payment.debtor.balance(),
+        "print_title": f"Payment Receipt — {payment.debtor.name}",
+    })

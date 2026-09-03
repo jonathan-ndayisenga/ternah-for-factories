@@ -1,0 +1,18 @@
+<div class="grid cards-4">
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:raw_materials' %}">
+    <h3>Low Stock Materials</h3>
+    <div class="big" style="{% if low_stock %}color:var(--red){% endif %}">{{ low_stock }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:raw_materials' %}">
+    <h3>Expiring Within 60 Days</h3>
+    <div class="big" style="{% if expiring %}color:var(--amber){% endif %}">{{ expiring }}</div>
+  </a>
+  <div class="card">
+    <h3>Finished Goods Store Value</h3>
+    <div class="big">UGX {{ store_value|floatformat:0 }}</div>
+  </div>
+  <a class="card" style="text-decoration:none;color:inherit;display:block" href="{% url 'production:processing' %}">
+    <h3>Processing</h3>
+    <div class="big" style="{% if processing %}color:var(--amber){% endif %}">{{ processing }}</div>
+  </a>
+</div>

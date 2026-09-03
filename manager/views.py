@@ -9,7 +9,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from production.models import Distribution, Product
-from sales.models import Debtor, DebtorPayment, InventoryLocation, PendingAction, StockItem, StockMovement
+from sales.models import (
+    Debtor, DebtorPayment, InventoryLocation, OutletTransfer, PendingAction, StockItem, StockMovement,
+)
 
 manager_required = user_passes_test(lambda u: u.is_authenticated and u.role == "MANAGER")
 manager_or_owner_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("MANAGER", "OWNER"))
@@ -107,6 +109,9 @@ def inventory(request):
         "incoming": Distribution.objects.filter(
             business=request.user.business, status="SENT", receiver_location__branch=request.user.branch
         ).prefetch_related("lines__product").order_by("date"),
+        "incoming_transfers": OutletTransfer.objects.filter(
+            business=request.user.business, status="SENT", to_location__branch=request.user.branch
+        ).select_related("from_location__branch").prefetch_related("lines__product").order_by("date"),
     }
     if location:
         items = list(StockItem.objects.filter(location=location).select_related("product").order_by("product__name"))
@@ -137,6 +142,8 @@ def stock_movements(request):
     for m in page_obj:
         if m.counterparty:
             m.flow_label = f"Sent to {m.counterparty}" if m.quantity < 0 else f"Received from {m.counterparty}"
+        elif m.counterparty_name:
+            m.flow_label = f"Sold to {m.counterparty_name}"
         else:
             m.flow_label = None
     print_title = "Stock Movements" + (f" — {request.user.branch.name}" if request.user.role == "MANAGER" else "")

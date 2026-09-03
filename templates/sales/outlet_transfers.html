@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Outlet Transfers{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Outlet Transfers</h2>
+</div>
+
+{% if not location %}
+<div class="card"><p style="color:var(--muted)">No inventory location is set up for you yet.</p></div>
+{% else %}
+
+<div class="card" style="margin-bottom:1rem">
+  <h3>Sent by you</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Reference</th><th>Date</th><th>To</th><th>Items</th><th>Status</th></tr>
+    {% for t in sent %}
+    <tr>
+      <td>{{ t.reference_number }}</td>
+      <td>{{ t.date|date:"d M Y" }}</td>
+      <td>{{ t.to_location.branch.name }}</td>
+      <td>{% for line in t.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        {% if t.status == "SENT" %}<span class="pill warning">Awaiting confirmation</span>
+        {% elif t.status == "RECEIVED" %}<span class="pill active">Received</span>
+        {% else %}<span class="pill locked">Disputed</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">You haven't sent anything to another outlet yet.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Received from other outlets</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Reference</th><th>Date</th><th>From</th><th>Items</th><th>Status</th></tr>
+    {% for t in received %}
+    <tr>
+      <td>{{ t.reference_number }}</td>
+      <td>{{ t.date|date:"d M Y" }}</td>
+      <td>{{ t.from_location.branch.name }}</td>
+      <td>{% for line in t.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        {% if t.status == "SENT" %}<span class="pill warning">Awaiting your manager's confirmation</span>
+        {% elif t.status == "RECEIVED" %}<span class="pill active">Received</span>
+        {% else %}<span class="pill locked">Disputed</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">Nothing received from another outlet yet.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

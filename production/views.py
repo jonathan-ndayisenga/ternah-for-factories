@@ -18,7 +18,7 @@ from finance.services import post_batch_completion, post_raw_material_purchase
 from sales.models import InventoryLocation, StockItem, StockMovement, StockRequest
 from .models import (
     Category, Dispensation, Distribution, DistributionLine, FormulaLine, Product, ProductFormula,
-    ProductionBatch, QAReport, RawMaterial, RawMaterialPurchase,
+    ProductionBatch, QAReport, RawMaterial, RawMaterialPurchase, UOM_SUGGESTIONS,
 )
 
 catalog_staff_required = user_passes_test(
@@ -36,14 +36,38 @@ def _latest_cost(product):
     return batch.unit_cost_at_production if batch else None
 
 
+def _cost_stats(product):
+    """Different batches of the same product can land at different unit
+    costs (yield variance, raw material price drift) — surface the range,
+    not just the latest figure, so a manager isn't pricing off a fluke batch."""
+    costs = list(ProductionBatch.objects.filter(product=product, status="COMPLETED")
+                 .exclude(unit_cost_at_production__isnull=True)
+                 .order_by("-date", "-id").values_list("unit_cost_at_production", flat=True))
+    if not costs:
+        return None
+    return {"latest": costs[0], "min": min(costs), "max": max(costs), "count": len(costs)}
+
+
 @catalog_staff_required
 def product_list(request):
     biz = request.user.business
     products = list(Product.objects.filter(business=biz).select_related("category").order_by("status", "name"))
     for p in products:
-        p.latest_cost = _latest_cost(p)
+        p.cost_stats = _cost_stats(p)
     return render(request, "production/products.html", {
         "products": products, "awaiting_count": sum(1 for p in products if p.status == "DRAFT"),
+    })
+
+
+@catalog_staff_required
+def product_cost_history(request, pk):
+    biz = request.user.business
+    product = get_object_or_404(Product, pk=pk, business=biz)
+    batches = (ProductionBatch.objects.filter(product=product, status="COMPLETED")
+               .select_related("formula").order_by("-date", "-id"))
+    stats = _cost_stats(product)
+    return render(request, "production/product_cost_history.html", {
+        "product": product, "batches": batches, "stats": stats,
     })
 
 
@@ -118,21 +142,27 @@ def product_price_edit(request, pk):
 @distribution_staff_required
 def distribution_create(request):
     """Production sends stock to a receiver (rep or outlet). Only ACTIVE
-    products are offered — the pricing gate, enforced by construction."""
+    products are offered — the pricing gate, enforced by construction.
+    Can never send more than the finished-goods store actually holds —
+    validated against the same figures shown live in the form."""
     biz = request.user.business
     locations = InventoryLocation.objects.filter(business=biz).exclude(type="PRODUCTION_STORE") \
         .select_related("branch", "rep")
     active_products = Product.objects.filter(business=biz, status="ACTIVE").order_by("name")
     factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
 
+    stock_by_product = {
+        item.product_id: item.quantity
+        for item in StockItem.objects.filter(location=factory_store, product__in=active_products)
+    } if factory_store else {}
+    for p in active_products:
+        p.available_stock = stock_by_product.get(p.id, 0)
+
+    error = None
     if request.method == "POST":
         receiver = get_object_or_404(InventoryLocation, pk=request.POST.get("location"), business=biz)
-        seq = Distribution.objects.filter(business=biz, date=date.today()).count() + 1
-        dist = Distribution.objects.create(
-            business=biz, receiver_location=receiver,
-            delivery_note_number=f"DN-{request.user.username[:4].upper()}-{date.today():%d%m%y}-{seq:03d}",
-            date=date.today(), status="SENT", created_by=request.user,
-        )
+        lines = []
+        requested = {}   # product_id -> total qty requested across rows, so duplicate rows are caught too
         for pid, qty in zip(request.POST.getlist("product"), request.POST.getlist("quantity")):
             try:
                 qty = int(qty)
@@ -141,21 +171,41 @@ def distribution_create(request):
             if not pid or qty <= 0:
                 continue
             product = active_products.filter(pk=pid).first()
-            if not product or not factory_store:
+            if not product:
                 continue
-            store_item = StockItem.objects.filter(location=factory_store, product=product).first()
-            if not store_item or store_item.quantity < qty:
-                continue
-            DistributionLine.objects.create(distribution=dist, product=product, quantity=qty)
-            store_item.quantity -= qty
-            store_item.save(update_fields=["quantity"])
-            StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,
-                                         reason="DISTRIBUTION", reference=dist.delivery_note_number,
-                                         moved_by=request.user, counterparty=receiver)
-        return redirect("production:distributions")
+            requested[product.id] = requested.get(product.id, 0) + qty
+            lines.append((product, qty))
+
+        if not factory_store or not lines:
+            error = "Add at least one product to send."
+        else:
+            for pid, total_qty in requested.items():
+                available = stock_by_product.get(pid, 0)
+                if total_qty > available:
+                    product = active_products.get(pk=pid)
+                    error = (f"Can't send {total_qty} of {product.name} — only {available} available "
+                             f"in the finished-goods store.")
+                    break
+
+        if not error:
+            seq = Distribution.objects.filter(business=biz, date=date.today()).count() + 1
+            dist = Distribution.objects.create(
+                business=biz, receiver_location=receiver,
+                delivery_note_number=f"DN-{request.user.username[:4].upper()}-{date.today():%d%m%y}-{seq:03d}",
+                date=date.today(), status="SENT", created_by=request.user,
+            )
+            for product, qty in lines:
+                store_item = StockItem.objects.filter(location=factory_store, product=product).first()
+                DistributionLine.objects.create(distribution=dist, product=product, quantity=qty)
+                store_item.quantity -= qty
+                store_item.save(update_fields=["quantity"])
+                StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,
+                                             reason="DISTRIBUTION", reference=dist.delivery_note_number,
+                                             moved_by=request.user, counterparty=receiver)
+            return redirect("production:distributions")
 
     return render(request, "production/distribution_create.html", {
-        "locations": locations, "active_products": active_products,
+        "locations": locations, "active_products": active_products, "error": error,
     })
 
 
@@ -184,12 +234,18 @@ def distribution_confirm(request, pk):
     if action == "confirm":
         factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
         for line in dist.lines.select_related("product"):
+            # carry the factory's current cost basis (set at batch
+            # completion) over — becomes the receiver's buying price for
+            # this product, same everywhere stock lands
+            source_cost = StockItem.objects.filter(
+                location=factory_store, product=line.product).values_list("buying_price", flat=True).first() or 0
             item, _ = StockItem.objects.get_or_create(
                 location=dist.receiver_location, product=line.product,
-                defaults={"buying_price": 0, "selling_price": 0},
+                defaults={"buying_price": source_cost, "selling_price": 0},
             )
             item.quantity += line.quantity
-            item.save(update_fields=["quantity"])
+            item.buying_price = source_cost
+            item.save(update_fields=["quantity", "buying_price"])
             StockMovement.objects.create(location=dist.receiver_location, product=line.product, quantity=line.quantity,
                                          reason="DISTRIBUTION", reference=dist.delivery_note_number,
                                          moved_by=request.user, counterparty=factory_store)
@@ -252,7 +308,7 @@ def raw_material_create(request):
     biz = request.user.business
     if request.method == "POST":
         name = request.POST.get("name", "").strip()
-        uom = request.POST.get("unit_of_measure")
+        uom = request.POST.get("unit_of_measure", "").strip()
         try:
             reorder = Decimal(request.POST.get("reorder_level") or "0")
         except InvalidOperation:
@@ -260,9 +316,7 @@ def raw_material_create(request):
         if name and uom:
             RawMaterial.objects.create(business=biz, name=name, unit_of_measure=uom, reorder_level=reorder)
         return redirect("production:raw_materials")
-    return render(request, "production/raw_material_create.html", {
-        "uom_choices": RawMaterial._meta.get_field("unit_of_measure").choices,
-    })
+    return render(request, "production/raw_material_create.html", {"uom_suggestions": UOM_SUGGESTIONS})
 
 
 @production_staff_required
@@ -343,6 +397,11 @@ def formula_edit(request, product_pk):
                                            quantity_per_unit=line.quantity_per_unit)
             return redirect("production:formula_edit", product_pk=product.pk)
 
+        if action in ("deactivate", "reactivate") and latest and latest.status == "APPROVED":
+            latest.is_active = (action == "reactivate")
+            latest.save(update_fields=["is_active"])
+            return redirect("production:formula_edit", product_pk=product.pk)
+
         if action in ("save", "approve"):
             formula = latest if latest and latest.status == "DRAFT" else None
             if formula is None:
@@ -388,8 +447,11 @@ def batch_create(request):
     biz = request.user.business
     products, batch_data = [], {}
     for p in Product.objects.filter(business=biz).select_related("category"):
+        # the most recent APPROVED version is the one that counts — if it's
+        # been deactivated, don't silently fall back to an older approved
+        # version, since that could dispense against a stale recipe/costing
         formula = p.formulas.filter(status="APPROVED").order_by("-version").first()
-        if not formula:
+        if not formula or not formula.is_active:
             continue
         products.append(p)
         batch_data[str(p.pk)] = {
@@ -408,7 +470,7 @@ def batch_create(request):
             target = int(request.POST.get("target_quantity"))
         except (TypeError, ValueError):
             target = 0
-        if not formula or target <= 0:
+        if not formula or not formula.is_active or target <= 0:
             return redirect("production:batch_create")
 
         lines = list(formula.lines.select_related("raw_material").all())

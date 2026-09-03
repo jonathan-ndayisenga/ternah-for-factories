@@ -7,7 +7,7 @@
   {% if not products %}
     <p style="color:var(--muted)">No product has an approved formula yet — approve one under Products & Formulas first.</p>
   {% else %}
-  <form method="post" class="stack" id="batchForm">
+  <form method="post" class="stack" id="batchForm" onsubmit="return confirmDispense()">
     {% csrf_token %}
     <label>Product</label>
     <select name="product" id="productSelect" required onchange="recompute()">
@@ -40,6 +40,12 @@
 {% block scripts %}
 <script>
 const batchData = JSON.parse(document.getElementById("batchData").textContent);
+function confirmDispense() {
+  const sel = document.getElementById("productSelect");
+  const productName = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent.trim() : "this product";
+  const target = document.getElementById("targetQty").value || "0";
+  return confirm(`Dispense a batch of ${target} unit(s) of ${productName}?\n\nThis will deduct raw materials from stock and cannot be undone.`);
+}
 function recompute() {
   const pid = document.getElementById("productSelect").value;
   const target = parseFloat(document.getElementById("targetQty").value) || 0;

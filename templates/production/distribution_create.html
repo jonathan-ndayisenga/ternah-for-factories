@@ -4,7 +4,8 @@
 <div class="card" style="max-width:560px;margin:0 auto">
   <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Send Stock</h2>
   <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Only priced (active) products can be distributed — draft products aren't offered below.</p>
-  <form method="post" class="stack">
+  {% if error %}<p style="color:var(--red);font-weight:600;font-size:.9rem;margin-bottom:.5rem">{{ error }}</p>{% endif %}
+  <form method="post" class="stack" id="distForm" onsubmit="return validateDistribution()">
     {% csrf_token %}
     <label>Send to</label>
     <select name="location" required>
@@ -14,13 +15,20 @@
     </select>
 
     <div id="cartRows">
-      <div class="cart-row" style="margin-top:1rem">
-        <select name="product" required>
-          <option value="">Select product…</option>
-          {% for p in active_products %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
-        </select>
-        <input type="number" name="quantity" min="1" value="1" required>
-        <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
+      <div class="cart-item" style="margin-top:1rem">
+        <div class="cart-row">
+          <select name="product" class="dist-product" required onchange="updateAvailable(this)">
+            <option value="">Select product…</option>
+            {% for p in active_products %}
+              <option value="{{ p.id }}" data-stock="{{ p.available_stock }}" {% if p.available_stock <= 0 %}disabled{% endif %}>
+                {{ p.name }} ({{ p.available_stock }} available)
+              </option>
+            {% endfor %}
+          </select>
+          <input type="number" name="quantity" class="dist-qty" min="1" value="1" required oninput="clampQty(this)">
+          <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
+        </div>
+        <p class="dist-available" style="color:var(--muted);font-size:.8rem;margin-top:.15rem">Pick a product to see stock available.</p>
       </div>
     </div>
     <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addCartRow()">+ Add item</button>
@@ -32,15 +40,50 @@
 
 {% block scripts %}
 <script>
+function updateAvailable(sel) {
+  const item = sel.closest(".cart-item");
+  const qtyInput = item.querySelector(".dist-qty");
+  const hint = item.querySelector(".dist-available");
+  const opt = sel.selectedOptions[0];
+  const stock = opt ? (parseInt(opt.dataset.stock) || 0) : 0;
+  qtyInput.max = stock > 0 ? stock : 1;
+  if (parseInt(qtyInput.value) > stock) qtyInput.value = stock > 0 ? stock : 1;
+  hint.textContent = opt && opt.value ? `Available: ${stock}` : "Pick a product to see stock available.";
+}
+function clampQty(input) {
+  const max = parseInt(input.max) || 0;
+  if (max && parseInt(input.value) > max) input.value = max;
+}
 function addCartRow() {
   const rows = document.getElementById("cartRows");
-  const row = rows.firstElementChild.cloneNode(true);
-  row.querySelectorAll("select, input").forEach(el => { if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "1"; });
-  rows.appendChild(row);
+  const item = rows.querySelector(".cart-item").cloneNode(true);
+  item.querySelectorAll("select, input").forEach(el => { if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "1"; });
+  item.querySelector(".dist-qty").removeAttribute("max");
+  item.querySelector(".dist-available").textContent = "Pick a product to see stock available.";
+  rows.appendChild(item);
 }
 function removeCartRow(btn) {
   const rows = document.getElementById("cartRows");
-  if (rows.children.length > 1) btn.closest(".cart-row").remove();
+  if (rows.querySelectorAll(".cart-item").length > 1) btn.closest(".cart-item").remove();
+}
+function validateDistribution() {
+  const totals = {};
+  const stocks = {};
+  let ok = true;
+  document.querySelectorAll("#cartRows .cart-item").forEach(item => {
+    const sel = item.querySelector(".dist-product");
+    const qty = parseInt(item.querySelector(".dist-qty").value) || 0;
+    const opt = sel.selectedOptions[0];
+    if (!opt || !opt.value) return;
+    const pid = opt.value;
+    totals[pid] = (totals[pid] || 0) + qty;
+    stocks[pid] = parseInt(opt.dataset.stock) || 0;
+    if (totals[pid] > stocks[pid]) ok = false;
+  });
+  if (!ok) {
+    alert("You're trying to send more of a product than the finished-goods store has available. Please adjust the quantities.");
+  }
+  return ok;
 }
 </script>
 {% endblock %}

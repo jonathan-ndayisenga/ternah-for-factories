@@ -7,7 +7,7 @@
     <span class="role-pill role-{{ target.role|lower }}">{{ target.get_role_display }}</span>
     &nbsp;·&nbsp; {{ target.branch.name }}
   </p>
-  <form method="post" class="stack">{% csrf_token %}
+  <form method="post" class="stack" id="userEditForm" onsubmit="return confirmUserEdit()">{% csrf_token %}
     <label>Module access</label>
     <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.3rem">
       {% for m in available_modules %}
@@ -51,11 +51,23 @@
       <label style="display:flex;align-items:center;gap:.4rem;width:auto;margin:0;
                     background:#FDECEA;border:1px solid #F5C2C0;border-radius:8px;
                     padding:.45rem .75rem;font-size:.85rem;font-weight:600;cursor:pointer;color:var(--red)">
-        <input type="checkbox" name="is_active" style="width:auto" {% if target.is_active %}checked{% endif %}>Account active (uncheck to deactivate)
+        <input type="checkbox" name="is_active" id="isActiveBox" data-was-active="{{ target.is_active|yesno:'1,0' }}" style="width:auto" {% if target.is_active %}checked{% endif %}>Account active (uncheck to deactivate)
       </label>
     </div>
 
     <button class="btn" style="margin-top:1.2rem">Save changes</button>
   </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function confirmUserEdit() {
+  const box = document.getElementById("isActiveBox");
+  if (box.dataset.wasActive === "1" && !box.checked) {
+    return confirm("Deactivate {{ target.username|escapejs }}? They will no longer be able to log in.");
+  }
+  return true;
+}
+</script>
 {% endblock %}

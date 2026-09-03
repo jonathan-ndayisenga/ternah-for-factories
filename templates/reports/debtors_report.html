@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Debtors Report{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>Debtors Report</h2>
+  <span class="spacer"></span>
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+{% include "partials/print_letterhead.html" with print_title=print_title %}
+
+<div class="grid cards-4">
+  <div class="card">
+    <h3>Total Outstanding</h3>
+    <div class="big" style="color:var(--red)">UGX {{ total|floatformat:0 }}</div>
+  </div>
+  <div class="card">
+    <h3>0–30 Days</h3>
+    <div class="big">UGX {{ buckets.0_30|floatformat:0 }}</div>
+  </div>
+  <div class="card">
+    <h3>31–60 Days</h3>
+    <div class="big" style="color:var(--amber)">UGX {{ buckets.31_60|floatformat:0 }}</div>
+  </div>
+  <div class="card">
+    <h3>60+ Days</h3>
+    <div class="big" style="color:var(--red)">UGX {{ buckets.60_plus|floatformat:0 }}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3>Largest Debtors</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Name</th><th>Location</th><th>Balance</th><th>Age</th></tr>
+    {% for r in largest %}
+    <tr>
+      <td><strong>{{ r.debtor.name }}</strong>{% if r.debtor.phone %}<br><span style="color:var(--muted);font-size:.8rem">{{ r.debtor.phone }}</span>{% endif %}</td>
+      <td>{{ r.debtor.location.branch.name }}{% if r.debtor.location.rep %} — {{ r.debtor.location.rep.username }}{% endif %}</td>
+      <td style="font-weight:700">UGX {{ r.balance|floatformat:0 }}</td>
+      <td>
+        {% if r.bucket == "60_plus" %}<span class="pill locked">{{ r.age_days }} days</span>
+        {% elif r.bucket == "31_60" %}<span class="pill warning">{{ r.age_days }} days</span>
+        {% else %}<span class="pill active">{{ r.age_days }} days</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="4" style="color:var(--muted)">No outstanding debtors.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3>All Debtors</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Name</th><th>Phone</th><th>Location</th><th>Balance</th><th>Age</th></tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.debtor.name }}</td>
+      <td>{{ r.debtor.phone|default:"—" }}</td>
+      <td>{{ r.debtor.location.branch.name }}{% if r.debtor.location.rep %} — {{ r.debtor.location.rep.username }}{% endif %}</td>
+      <td>UGX {{ r.balance|floatformat:0 }}</td>
+      <td>
+        {% if r.bucket == "60_plus" %}<span class="pill locked">{{ r.age_days }} days</span>
+        {% elif r.bucket == "31_60" %}<span class="pill warning">{{ r.age_days }} days</span>
+        {% else %}<span class="pill active">{{ r.age_days }} days</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">No outstanding debtors.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+{% include "partials/print_footer.html" %}
+{% endblock %}

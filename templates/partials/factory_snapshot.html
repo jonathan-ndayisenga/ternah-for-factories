@@ -1,0 +1,56 @@
+<div class="grid charts-2">
+  <div class="card">
+    <h3>Raw Materials — reorder & expiry watch</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Material</th><th>Stock</th><th>Reorder Level</th></tr>
+      {% for m in low_stock %}
+      <tr><td>{{ m.name }}</td><td style="color:var(--red);font-weight:700">{{ m.stock|floatformat:3 }} {{ m.unit_of_measure }}</td><td>{{ m.reorder_level|floatformat:3 }}</td></tr>
+      {% empty %}<tr><td colspan="3" style="color:var(--muted)">Nothing below reorder level.</td></tr>{% endfor %}
+    </table>
+    </div>
+    <div class="table-scroll" style="margin-top:.75rem">
+    <table class="list">
+      <tr><th>Purchase Batch</th><th>Material</th><th>Expires</th><th>Remaining</th></tr>
+      {% for p in expiring %}
+      <tr>
+        <td>{{ p.batch_number|default:"—" }}</td>
+        <td>{{ p.raw_material.name }}</td>
+        <td style="color:var(--amber);font-weight:700">{{ p.expiry_date|date:"d M Y" }}</td>
+        <td>{{ p.remaining_quantity|floatformat:3 }} {{ p.raw_material.unit_of_measure }}</td>
+      </tr>
+      {% empty %}<tr><td colspan="4" style="color:var(--muted)">Nothing expiring within 60 days.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Finished Goods Store</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Product</th><th>Quantity</th></tr>
+      {% for i in store_items %}
+      <tr><td>{{ i.product.name }}</td><td>{{ i.quantity }}</td></tr>
+      {% empty %}<tr><td colspan="2" style="color:var(--muted)">No finished goods in store.</td></tr>{% endfor %}
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.25rem">Recent Batches</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Batch</th><th>Product</th><th>Status</th></tr>
+      {% for b in recent_batches %}
+      <tr>
+        <td><a href="{% url 'reports:production_batch_detail' b.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ b.batch_number }}</a></td>
+        <td>{{ b.product.name }}</td>
+        <td>
+          {% if b.status == "COMPLETED" %}<span class="pill active">Completed</span>
+          {% elif b.status == "DISPENSED" %}<span class="pill warning">Dispensed</span>
+          {% else %}<span class="pill locked">Planned</span>{% endif %}
+        </td>
+      </tr>
+      {% empty %}<tr><td colspan="3" style="color:var(--muted)">No batches yet.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+</div>

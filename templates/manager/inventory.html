@@ -33,6 +33,33 @@
 </div>
 {% endif %}
 
+{% if incoming_transfers %}
+<div class="card" style="margin-bottom:1rem">
+  <h3>Incoming from another outlet — awaiting confirmation</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Reference</th><th>Date</th><th>From</th><th>Items</th><th></th></tr>
+    {% for t in incoming_transfers %}
+    <tr>
+      <td>{{ t.reference_number }}</td>
+      <td>{{ t.date|date:"d M Y" }}</td>
+      <td>{{ t.from_location.branch.name }}</td>
+      <td>{% for line in t.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        <form method="post" action="{% url 'sales:outlet_transfer_confirm' t.pk %}" style="display:inline-flex;gap:.4rem">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{% url 'manager:inventory' %}">
+          <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto" onclick="return confirm('Confirm receipt of this stock? It will land in your inventory and post as an expense on your books.')">Confirm</button>
+          <button class="btn ghost" name="action" value="dispute" style="padding:.4rem .7rem;min-height:auto;background:#FADBD8;color:var(--red)" onclick="return confirm('Dispute this transfer? It will be flagged and left unresolved until sorted out manually.')">Dispute</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+
 {% if not location %}
 <div class="card"><p style="color:var(--muted)">No outlet inventory is set up for your branch yet.</p></div>
 {% else %}

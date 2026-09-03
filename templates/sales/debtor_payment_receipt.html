@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Payment Receipt{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>Payment Receipt</h2>
+  <span class="spacer"></span>
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+{% include "partials/print_letterhead.html" with print_title=print_title %}
+{% include "partials/receipt_print_style.html" %}
+
+<div class="card" style="max-width:560px;margin:0 auto">
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid #EDF1F5">
+    <div>
+      <p style="color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.4px;font-weight:700">Received from</p>
+      <p style="font-size:1.1rem;font-weight:800;color:var(--ternah-navy)">{{ debtor.name }}</p>
+      {% if debtor.phone %}<p style="color:var(--muted);font-size:.85rem">{{ debtor.phone }}</p>{% endif %}
+    </div>
+    <div style="text-align:right">
+      <p style="color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.4px;font-weight:700">Date</p>
+      <p style="font-weight:600">{{ payment.created_at|date:"d M Y, H:i" }}</p>
+      <p style="color:var(--muted);font-size:.78rem;margin-top:.3rem">Received by {{ payment.received_by.username|default:"—" }}</p>
+    </div>
+  </div>
+
+  <div style="text-align:center;padding:1.2rem 0">
+    <p style="color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.4px;font-weight:700">Amount Paid</p>
+    <p style="font-size:2rem;font-weight:800;color:var(--green)">UGX {{ payment.amount|floatformat:0 }}</p>
+    <p style="color:var(--muted);font-size:.85rem;margin-top:.2rem">Paid via {{ payment.method|title }}</p>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;padding:.8rem 0;border-top:1.5px solid var(--ternah-navy)">
+    <span style="font-weight:700">Remaining Balance Owed</span>
+    <span style="font-weight:800;font-size:1.1rem;color:{% if balance_after > 0 %}var(--red){% else %}var(--green){% endif %}">
+      UGX {{ balance_after|floatformat:0 }}
+    </span>
+  </div>
+  {% if balance_after <= 0 %}
+    <p style="text-align:center;color:var(--green);font-weight:600;font-size:.9rem;margin-top:.5rem">Fully settled — no outstanding balance.</p>
+  {% endif %}
+</div>
+
+{% include "partials/print_footer.html" %}
+{% endblock %}
