@@ -10,18 +10,59 @@
   {% for r in requests %}
   <div class="card">
     <h3>{{ r.requester_location.branch.name }}{% if r.requester_location.rep %} — {{ r.requester_location.rep.username }}{% else %} — {{ r.requester_location.get_type_display }}{% endif %}</h3>
-    <p style="font-size:.85rem;color:var(--muted);margin-bottom:.5rem">Requested {{ r.created_at|date:"d M Y, H:i" }}</p>
-    <div class="table-scroll" style="margin-bottom:.75rem">
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:.15rem">Requested {{ r.created_at|date:"d M Y, H:i" }}</p>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:.6rem">If short: <strong>{{ r.get_fulfillment_mode_display }}</strong></p>
+
+    <div class="table-scroll" style="margin-bottom:.5rem">
     <table class="list">
-      <tr><th>Product</th><th>Quantity</th></tr>
-      {% for line in r.lines_display %}
-      <tr><td>{{ line.product.name|default:"Unknown product" }}</td><td>{{ line.quantity }}</td></tr>
+      <tr><th>Product</th><th>Owed</th><th>At factory</th><th>Will send now</th><th>From batch</th></tr>
+      {% for line in r.plan %}
+      <tr>
+        <td>{{ line.product.name|default:"Unknown product" }}</td>
+        <td>{{ line.remaining }}</td>
+        <td>{{ line.available }}</td>
+        <td style="font-weight:700;color:{% if line.send_now > 0 %}var(--green){% else %}var(--muted){% endif %}">{{ line.send_now }}</td>
+        <td style="font-size:.78rem;color:var(--muted)">
+          {% for b in line.batches %}{{ b.batch.batch_number }} &times;{{ b.take }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+        </td>
+      </tr>
+      {% if line.short > 0 %}
+      <tr><td colspan="5" style="color:var(--red);font-size:.82rem;padding-top:0">
+        Short {{ line.short }} {{ line.product.name|default:"" }}
+        {% if r.fulfillment_mode == "AVAILABLE_ONLY" %} — will be cancelled on fulfil, not queued.
+        {% else %} — stays on order until a new batch lands.{% if line.product %} <a href="{% url 'production:batch_create' %}?product={{ line.product.pk }}&quantity={{ line.short }}" style="color:var(--ternah-blue);font-weight:600">Start a batch for it &rarr;</a>{% endif %}{% endif %}
+      </td></tr>
+      {% endif %}
       {% endfor %}
     </table>
     </div>
-    <form method="post" action="{% url 'production:stock_request_fulfill' r.pk %}">
+
+    {% if r.distributions.all %}
+    <details style="margin-bottom:.6rem">
+      <summary style="cursor:pointer;font-size:.82rem;color:var(--muted);font-weight:700">Already sent against this request</summary>
+      <div class="table-scroll" style="margin-top:.4rem">
+      <table class="list">
+        <tr><th>Delivery Note</th><th>Date</th><th>Items</th></tr>
+        {% for d in r.distributions.all %}
+        <tr>
+          <td>{{ d.delivery_note_number }}</td>
+          <td>{{ d.date|date:"d M Y" }}</td>
+          <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if line.batch %} <span style="color:var(--muted)">({{ line.batch.batch_number }})</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      </div>
+    </details>
+    {% endif %}
+
+    <form method="post" action="{% url 'production:stock_request_fulfill' r.pk %}"
+          onsubmit="return confirm('{% if r.any_shortfall %}This will only cover part of what was requested — the rest {% if r.fulfillment_mode == "AVAILABLE_ONLY" %}will be cancelled{% else %}stays on order{% endif %}. Send what is available now?{% else %}Send this stock now?{% endif %}')">
       {% csrf_token %}
-      <button class="btn" style="width:100%">Fulfill — send as a distribution</button>
+      <button class="btn" style="width:100%" {% if not r.any_sendable %}disabled{% endif %}>
+        {% if not r.any_sendable %}Nothing in stock to send yet
+        {% elif r.any_shortfall %}Send what's available now
+        {% else %}Fulfil — send as a distribution{% endif %}
+      </button>
     </form>
   </div>
   {% endfor %}

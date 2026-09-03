@@ -12,10 +12,10 @@
     <label>Product</label>
     <select name="product" id="productSelect" required onchange="recompute()">
       <option value="">Select product…</option>
-      {% for p in products %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+      {% for p in products %}<option value="{{ p.pk }}" {% if preselect_product == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
     </select>
     <label>Target quantity</label>
-    <input name="target_quantity" id="targetQty" type="number" min="1" required oninput="recompute()">
+    <input name="target_quantity" id="targetQty" type="number" min="1" required oninput="recompute()" value="{{ preselect_quantity }}">
 
     <div id="reqCard" style="display:none;margin-top:1rem">
       <h3 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:.5rem">Requirements</h3>
@@ -73,5 +73,6 @@ function recompute() {
   warning.style.display = hasShortfall ? "block" : "none";
   reqCard.style.display = "block";
 }
+document.addEventListener("DOMContentLoaded", recompute);   // pre-filled from a short stock request
 </script>
 {% endblock %}

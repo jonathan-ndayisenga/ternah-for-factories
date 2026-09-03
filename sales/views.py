@@ -434,9 +434,12 @@ def stock_request_create(request):
                 continue
             if not active_products.filter(pk=pid).exists():
                 continue
-            lines.append({"product_id": int(pid), "quantity": qty})
+            lines.append({"product_id": int(pid), "quantity": qty, "fulfilled": 0, "dropped": 0})
+        mode = request.POST.get("fulfillment_mode")
+        mode = mode if mode in dict(StockRequest.MODES) else "WAIT"
         if lines:
-            StockRequest.objects.create(business=biz, requester_location=location, status="SUBMITTED", lines=lines)
+            StockRequest.objects.create(business=biz, requester_location=location, status="SUBMITTED",
+                                        fulfillment_mode=mode, lines=lines)
             messages.success(request, "Stock request sent to Production.")
         else:
             messages.error(request, "Add at least one product with a quantity to request.")
@@ -445,13 +448,13 @@ def stock_request_create(request):
     my_requests = StockRequest.objects.filter(requester_location=location).order_by("-created_at")[:20] if location else []
     for r in my_requests:
         r.lines_display = [
-            {"product": active_products.filter(pk=l.get("product_id")).first() or
-                        Product.objects.filter(pk=l.get("product_id")).first(),
-             "quantity": l.get("quantity")}
-            for l in r.lines
+            {**l, "product": active_products.filter(pk=l["product_id"]).first() or
+                             Product.objects.filter(pk=l["product_id"]).first()}
+            for l in r.line_progress()
         ]
     return render(request, "sales/stock_request_create.html", {
         "location": location, "active_products": active_products, "my_requests": my_requests,
+        "mode_choices": StockRequest.MODES,
     })
 
 

@@ -7,6 +7,7 @@ module: raw materials in, formulas, batches, QA, out to distribution."""
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
+from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
 from django.db.models import Count, F, ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
@@ -539,7 +540,11 @@ def batch_create(request):
         # form for this one batch
         return redirect("production:processing")
 
-    return render(request, "production/batch_create.html", {"products": products, "batch_data": batch_data})
+    return render(request, "production/batch_create.html", {
+        "products": products, "batch_data": batch_data,
+        "preselect_product": request.GET.get("product", ""),   # e.g. arriving from a short stock request
+        "preselect_quantity": request.GET.get("quantity", ""),
+    })
 
 
 @production_staff_required
@@ -605,16 +610,44 @@ def batch_complete(request, pk):
 
 # ------------------------------------------------------------ Stock Requests
 
+def _request_plan(stock_request, factory_store):
+    """For each line of a request: what was asked for, what's already gone
+    out, what's still owed, what the factory holds right now, what would ship
+    if fulfilled this minute, the shortfall, and the FEFO batches that
+    shipment would draw on — the whole picture before anyone clicks Fulfil."""
+    plan, any_shortfall, any_sendable = [], False, False
+    for l in stock_request.line_progress():
+        product = Product.objects.filter(pk=l["product_id"]).first()
+        remaining = l["remaining"]
+        item = StockItem.objects.filter(location=factory_store, product=product).first() \
+            if (product and factory_store) else None
+        available = item.quantity if item else 0
+        send_now = min(remaining, available)
+        short = remaining - send_now
+        batches, left = [], send_now
+        if product:
+            for b in _batches_available(product):
+                if left <= 0:
+                    break
+                take = min(left, b.remaining_quantity)
+                batches.append({"batch": b, "take": take})
+                left -= take
+        plan.append({**l, "product": product, "available": available, "send_now": send_now,
+                     "short": short, "batches": batches})
+        any_shortfall = any_shortfall or short > 0
+        any_sendable = any_sendable or send_now > 0
+    return plan, any_shortfall, any_sendable
+
+
 @production_staff_required
 def stock_request_list(request):
     biz = request.user.business
-    requests = StockRequest.objects.filter(business=biz, status="SUBMITTED") \
-        .select_related("requester_location__branch", "requester_location__rep").order_by("created_at")
+    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+    requests = StockRequest.objects.filter(business=biz, status__in=("SUBMITTED", "PARTIAL")) \
+        .select_related("requester_location__branch", "requester_location__rep") \
+        .prefetch_related("distributions__lines__product", "distributions__lines__batch").order_by("created_at")
     for r in requests:
-        r.lines_display = [
-            {"product": Product.objects.filter(pk=l.get("product_id")).first(), "quantity": l.get("quantity")}
-            for l in r.lines
-        ]
+        r.plan, r.any_shortfall, r.any_sendable = _request_plan(r, factory_store)
     return render(request, "production/stock_requests.html", {"requests": requests})
 
 
@@ -624,35 +657,56 @@ def stock_request_fulfill(request, pk):
     stock decrement — just sourced from the request's lines instead of a
     hand-picked cart."""
     biz = request.user.business
-    stock_request = get_object_or_404(StockRequest, pk=pk, business=biz, status="SUBMITTED")
-    if request.method == "POST":
-        factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
-        today = date.today()
-        seq = Distribution.objects.filter(business=biz, date=today).count() + 1
-        dist = Distribution.objects.create(
-            business=biz, receiver_location=stock_request.requester_location,
-            delivery_note_number=f"DN-{request.user.username[:4].upper()}-{today:%d%m%y}-{seq:03d}",
-            date=today, status="SENT", created_by=request.user,
-        )
-        for line in stock_request.lines:
-            product = Product.objects.filter(pk=line.get("product_id"), business=biz, status="ACTIVE").first()
-            try:
-                qty = int(line.get("quantity", 0))
-            except (TypeError, ValueError):
-                qty = 0
-            if not product or qty <= 0 or not factory_store:
-                continue
+    stock_request = get_object_or_404(StockRequest, pk=pk, business=biz, status__in=("SUBMITTED", "PARTIAL"))
+    if request.method != "POST":
+        return redirect("production:stock_requests")
+
+    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+    plan, any_shortfall, any_sendable = _request_plan(stock_request, factory_store)
+    if not factory_store or not any_sendable:
+        messages.error(request, "Nothing on this request is in the factory store right now — "
+                                "start a new batch first, then come back to it.")
+        return redirect("production:stock_requests")
+
+    today = date.today()
+    seq = Distribution.objects.filter(business=biz, date=today).count() + 1
+    dist = Distribution.objects.create(
+        business=biz, receiver_location=stock_request.requester_location,
+        delivery_note_number=f"DN-{request.user.username[:4].upper()}-{today:%d%m%y}-{seq:03d}",
+        date=today, status="SENT", created_by=request.user, stock_request=stock_request,
+    )
+    new_lines, sent_bits, short_bits = [], [], []
+    for entry in plan:
+        product, send_now = entry["product"], entry["send_now"]
+        line = {"product_id": entry["product_id"], "quantity": entry["quantity"],
+                "fulfilled": entry["fulfilled"], "dropped": entry["dropped"]}
+        if product and product.status == "ACTIVE" and send_now > 0:
             store_item = StockItem.objects.filter(location=factory_store, product=product).first()
-            if not store_item or store_item.quantity < qty:
-                continue
-            _dispense_finished_goods_fefo(dist, product, qty)
-            store_item.quantity -= qty
+            _dispense_finished_goods_fefo(dist, product, send_now)
+            store_item.quantity -= send_now
             store_item.save(update_fields=["quantity"])
-            StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,
+            StockMovement.objects.create(location=factory_store, product=product, quantity=-send_now,
                                          reason="DISTRIBUTION", reference=dist.delivery_note_number,
                                          moved_by=request.user, counterparty=stock_request.requester_location)
-        stock_request.status = "FULFILLED"
-        stock_request.save(update_fields=["status"])
+            line["fulfilled"] += send_now
+            sent_bits.append(f"{product.name} ×{send_now}")
+        outstanding = line["quantity"] - line["fulfilled"] - line["dropped"]
+        if outstanding > 0:
+            if stock_request.fulfillment_mode == "AVAILABLE_ONLY":
+                line["dropped"] += outstanding   # they said "just send what you have" — close the gap out
+            else:
+                short_bits.append(f"{product.name if product else 'unknown product'} ×{outstanding}")
+        new_lines.append(line)
+
+    stock_request.lines = new_lines
+    still_owed = any(l["quantity"] - l["fulfilled"] - l["dropped"] > 0 for l in new_lines)
+    stock_request.status = "PARTIAL" if still_owed else "FULFILLED"
+    stock_request.save(update_fields=["lines", "status"])
+
+    msg = f"{dist.delivery_note_number} sent: {', '.join(sent_bits)}."
+    if short_bits:
+        msg += f" Still on order: {', '.join(short_bits)} — start a new batch to cover it."
+    messages.success(request, msg)
     return redirect("production:stock_requests")
 
 
@@ -686,7 +740,7 @@ def dashboard(request):
         "recent_batches": ProductionBatch.objects.filter(business=biz).order_by("-date", "-id")[:8],
         "processing_count": ProductionBatch.objects.filter(business=biz, status="DISPENSED").count(),
         "awaiting_confirmation": Distribution.objects.filter(business=biz, status="SENT").count(),
-        "stock_requests_count": StockRequest.objects.filter(business=biz, status="SUBMITTED").count(),
+        "stock_requests_count": StockRequest.objects.filter(business=biz, status__in=("SUBMITTED", "PARTIAL")).count(),
         "awaiting_pricing": Product.objects.filter(business=biz, status="DRAFT").count(),
     })
 

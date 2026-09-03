@@ -176,6 +176,8 @@ class Distribution(TimeStamped):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                      related_name="distributions_confirmed")
+    stock_request = models.ForeignKey("sales.StockRequest", null=True, blank=True, on_delete=models.SET_NULL,
+                                      related_name="distributions")   # set when this delivery answers a request
 
 
 class DistributionLine(models.Model):

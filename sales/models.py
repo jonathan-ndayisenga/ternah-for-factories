@@ -150,13 +150,29 @@ class Expense(TimeStamped):
 
 
 class StockRequest(TimeStamped):
-    """Outlet/rep -> production. Auto-drafted on low stock."""
+    """Outlet/rep -> production. A request can be fulfilled in more than one
+    go: whatever the factory holds ships now, and — if the requester chose to
+    wait — the remainder stays on order (PARTIAL) until a new batch lands."""
     STATUS = [("DRAFT", "Draft"), ("SUBMITTED", "Submitted"), ("APPROVED", "Approved"),
-              ("REJECTED", "Rejected"), ("FULFILLED", "Fulfilled")]
+              ("REJECTED", "Rejected"), ("PARTIAL", "Partially sent — remainder on order"),
+              ("FULFILLED", "Fulfilled")]
+    MODES = [("WAIT", "Send what's available now, keep the rest on order"),
+             ("AVAILABLE_ONLY", "Send what's available now only, cancel the rest")]
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
     requester_location = models.ForeignKey(InventoryLocation, on_delete=models.CASCADE)
     status = models.CharField(max_length=10, choices=STATUS, default="DRAFT")
-    lines = models.JSONField(default=list)           # [{product_id, quantity}]
+    fulfillment_mode = models.CharField(max_length=15, choices=MODES, default="WAIT")
+    lines = models.JSONField(default=list)           # [{product_id, quantity, fulfilled, dropped}]
+
+    def line_progress(self):
+        """Per line: requested, sent so far, still outstanding."""
+        out = []
+        for l in self.lines:
+            qty = int(l.get("quantity", 0) or 0)
+            sent = int(l.get("fulfilled", 0) or 0)
+            out.append({"product_id": l.get("product_id"), "quantity": qty, "fulfilled": sent,
+                        "dropped": int(l.get("dropped", 0) or 0), "remaining": max(qty - sent - int(l.get("dropped", 0) or 0), 0)})
+        return out
 
 
 class OutletTransfer(TimeStamped):

@@ -27,6 +27,11 @@
     </div>
     <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addCartRow()">+ Add item</button>
 
+    <label style="margin-top:1rem">If part of this isn't in stock right now</label>
+    <select name="fulfillment_mode">
+      {% for code, label in mode_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select>
+
     <button class="btn" style="margin-top:1.2rem;width:100%">Send request</button>
   </form>
 </div>
@@ -39,9 +44,17 @@
     {% for r in my_requests %}
     <tr>
       <td>{{ r.created_at|date:"d M Y, H:i" }}</td>
-      <td>{% for line in r.lines_display %}{{ line.product.name|default:"Unknown product" }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        {% for line in r.lines_display %}
+          {{ line.product.name|default:"Unknown product" }} &times;{{ line.quantity }}
+          {% if line.fulfilled %}<span style="color:var(--green)">({{ line.fulfilled }} sent</span>{% if line.remaining %}, <span style="color:var(--amber)">{{ line.remaining }} still owed)</span>{% else %}<span style="color:var(--green)">)</span>{% endif %}{% endif %}
+          {% if line.dropped %}<span style="color:var(--muted)">— {{ line.dropped }} cancelled</span>{% endif %}
+          {% if not forloop.last %}, {% endif %}
+        {% endfor %}
+      </td>
       <td>
         {% if r.status == "SUBMITTED" %}<span class="pill warning">Awaiting Production</span>
+        {% elif r.status == "PARTIAL" %}<span class="pill warning">Partly sent — rest on order</span>
         {% elif r.status == "FULFILLED" %}<span class="pill active">Fulfilled</span>
         {% else %}<span class="pill locked">{{ r.get_status_display }}</span>{% endif %}
       </td>
