@@ -87,4 +87,21 @@
     </div>
   </div>
 </div>
+
+<div class="card" style="margin-top:1rem;border:1.5px solid #F5C2C0;max-width:520px">
+  <h3 style="color:var(--red)">Danger Zone</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin:.4rem 0 .8rem">
+    Permanently deletes {{ business.name }} — every sale, batch, ledger entry, user account, everything.
+    There is no undo. Type the factory name exactly to confirm.
+  </p>
+  {% if delete_error %}<p style="color:var(--red);font-weight:600;margin-bottom:.6rem">{{ delete_error }}</p>{% endif %}
+  <form method="post" action="{% url 'platformadmin:delete_business' business.pk %}" class="stack" id="deleteForm">
+    {% csrf_token %}
+    <label>Type "{{ business.name }}" to confirm</label>
+    <input name="confirm_name" id="confirmName" autocomplete="off" required oninput="document.getElementById('deleteBtn').disabled = (this.value !== '{{ business.name|escapejs }}')">
+    <button id="deleteBtn" class="btn" style="margin-top:.8rem;width:100%;background:var(--red)" disabled>
+      Permanently delete this factory
+    </button>
+  </form>
+</div>
 {% endblock %}

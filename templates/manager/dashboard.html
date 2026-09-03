@@ -33,10 +33,7 @@
   <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'manager:inventory' %}">Inventory</a>
 </div>
 
-<div class="print-only print-masthead">
-  <h1>{{ request.user.business.name }}</h1>
-  <p>{{ request.user.branch.name }} Dashboard — generated {% now "d M Y, H:i" %}</p>
-</div>
+{% include "partials/print_letterhead.html" with print_title=request.user.branch.name|add:" Dashboard" %}
 
 <div id="cards" hx-get="{% url 'reports:stats_cards' %}" hx-trigger="load"></div>
 
@@ -47,6 +44,7 @@
   <div class="card"><h3>Payment Method Split</h3><div class="chart-wrap"><canvas id="paySplit"></canvas></div></div>
   <div class="card"><h3>Expenses by Category</h3><div class="chart-wrap"><canvas id="expenses"></canvas></div></div>
 </div>
+{% include "partials/print_footer.html" %}
 {% endblock %}
 
 {% block scripts %}

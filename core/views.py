@@ -16,6 +16,22 @@ def branch_list(request):
 
 
 @owner_required
+def business_settings(request):
+    """Contact details and tagline — shown on every printed report's
+    letterhead. Name stays fixed here (it's tied to the slug); everything
+    else the owner can update any time, not just at onboarding."""
+    biz = request.user.business
+    if request.method == "POST":
+        biz.contact_email = request.POST.get("contact_email", "").strip()
+        biz.contact_phone = request.POST.get("contact_phone", "").strip()
+        biz.address = request.POST.get("address", "").strip()
+        biz.tagline = request.POST.get("tagline", "").strip()
+        biz.save(update_fields=["contact_email", "contact_phone", "address", "tagline"])
+        return redirect("core:business_settings")
+    return render(request, "core/business_settings.html", {"business": biz})
+
+
+@owner_required
 def branch_create(request):
     biz = request.user.business
     if request.method == "POST":

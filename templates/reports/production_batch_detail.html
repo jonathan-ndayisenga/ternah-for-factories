@@ -8,10 +8,7 @@
   <button class="btn" onclick="window.print()">Print</button>
 </div>
 
-<div class="print-only print-masthead">
-  <h1>{{ request.user.business.name }}</h1>
-  <p>Production Batch Report — {{ batch.batch_number }}</p>
-</div>
+{% include "partials/print_letterhead.html" with print_title="Production Batch Report — "|add:batch.batch_number %}
 
 <div class="grid cards-4">
   <div class="card"><h3>Product</h3><div class="big" style="font-size:1.2rem">{{ batch.product.name }}</div></div>
@@ -84,4 +81,5 @@
   </table>
   </div>
 </div>
+{% include "partials/print_footer.html" %}
 {% endblock %}

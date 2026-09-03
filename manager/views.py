@@ -139,4 +139,5 @@ def stock_movements(request):
             m.flow_label = f"Sent to {m.counterparty}" if m.quantity < 0 else f"Received from {m.counterparty}"
         else:
             m.flow_label = None
-    return render(request, "manager/stock_movements.html", {"page_obj": page_obj})
+    print_title = "Stock Movements" + (f" — {request.user.branch.name}" if request.user.role == "MANAGER" else "")
+    return render(request, "manager/stock_movements.html", {"page_obj": page_obj, "print_title": print_title})

@@ -7,10 +7,7 @@
   <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
 </div>
 
-<div class="print-only print-masthead">
-  <h1>{{ request.user.business.name }}</h1>
-  <p>General Ledger — generated {% now "d M Y, H:i" %}</p>
-</div>
+{% include "partials/print_letterhead.html" with print_title=print_title %}
 
 <p style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">Every posted double-entry — the real accounting journal, not the activity feed. Each entry always balances: total debits = total credits.</p>
 
@@ -40,4 +37,5 @@
 <div class="card"><p style="color:var(--muted)">Nothing posted yet.</p></div>
 {% endfor %}
 {% include "partials/pagination.html" %}
+{% include "partials/print_footer.html" %}
 {% endblock %}

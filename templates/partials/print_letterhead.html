@@ -1,0 +1,16 @@
+{% comment %}Usage: {% include "partials/print_letterhead.html" with print_title="Cashbook — Kampala Outlet" %}{% endcomment %}
+<div class="print-only print-letterhead">
+  <div class="print-letterhead-brand">
+    <h1>{{ request.user.business.name }}</h1>
+    {% if request.user.business.tagline %}<p class="print-tagline">{{ request.user.business.tagline }}</p>{% endif %}
+  </div>
+  <div class="print-letterhead-contact">
+    {% if request.user.business.address %}<p>{{ request.user.business.address }}</p>{% endif %}
+    {% if request.user.business.contact_phone %}<p>Tel: {{ request.user.business.contact_phone }}</p>{% endif %}
+    {% if request.user.business.contact_email %}<p>{{ request.user.business.contact_email }}</p>{% endif %}
+  </div>
+</div>
+<div class="print-only print-report-title">
+  <h2>{{ print_title }}</h2>
+  <p>Generated {% now "d M Y, H:i" %}</p>
+</div>

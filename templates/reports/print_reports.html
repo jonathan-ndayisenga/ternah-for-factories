@@ -18,10 +18,7 @@
   </form>
 </div>
 
-<div class="print-only print-masthead">
-  <h1>{{ request.user.business.name }}</h1>
-  <p>Report — {{ start }} to {{ end }}{% if request.GET.branch %} · one branch{% else %} · all branches{% endif %}</p>
-</div>
+{% include "partials/print_letterhead.html" with print_title=print_title %}
 
 <div class="card" style="margin-bottom:1rem">
   <h3>Sales — {{ start }} to {{ end }}</h3>
@@ -80,4 +77,5 @@
   </table>
   </div>
 </div>
+{% include "partials/print_footer.html" %}
 {% endblock %}

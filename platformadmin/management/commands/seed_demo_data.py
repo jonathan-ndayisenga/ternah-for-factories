@@ -19,6 +19,7 @@ from django.utils.text import slugify
 from core.models import Branch
 from finance.models import Supplier
 from platformadmin.models import AuditLog, Business, Module, ModuleSubscription, SubscriptionExtension
+from platformadmin.services import delete_business_completely
 from production.models import (
     Category, Distribution, DistributionLine, Dispensation, FormulaLine,
     Product, ProductFormula, ProductionBatch, QAReport, RawMaterial,
@@ -65,35 +66,9 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _wipe_existing(self):
-        """Business.delete() can't cascade cleanly: several children (Sale.location,
-        SaleItem.product, ProductionBatch.product/formula, Dispensation.*, ...) use
-        on_delete=PROTECT, which blocks even when the protecting row would itself be
-        cascaded away in the same operation. Delete leaves-first instead."""
         biz = Business.objects.filter(slug=BUSINESS_SLUG).first()
-        if not biz:
-            return
-        SaleItem.objects.filter(sale__business=biz).delete()
-        DebtorPayment.objects.filter(debtor__business=biz).delete()
-        Sale.objects.filter(business=biz).delete()
-        Debtor.objects.filter(business=biz).delete()
-        Expense.objects.filter(business=biz).delete()
-        StockMovement.objects.filter(location__business=biz).delete()
-        StockItem.objects.filter(location__business=biz).delete()
-        DistributionLine.objects.filter(distribution__business=biz).delete()
-        Distribution.objects.filter(business=biz).delete()
-        QAReport.objects.filter(batch__business=biz).delete()
-        Dispensation.objects.filter(batch__business=biz).delete()
-        ProductionBatch.objects.filter(business=biz).delete()
-        FormulaLine.objects.filter(formula__product__business=biz).delete()
-        ProductFormula.objects.filter(product__business=biz).delete()
-        Product.objects.filter(business=biz).delete()
-        Category.objects.filter(business=biz).delete()
-        RawMaterialPurchase.objects.filter(raw_material__business=biz).delete()
-        RawMaterial.objects.filter(business=biz).delete()
-        InventoryLocation.objects.filter(business=biz).delete()
-        MomoAccount.objects.filter(business=biz).delete()
-        Supplier.objects.filter(business=biz).delete()
-        biz.delete()  # remaining children (User, Branch, ModuleSubscription, SubscriptionExtension, AuditLog) are plain CASCADE
+        if biz:
+            delete_business_completely(biz)
 
     def _make_business(self):
         biz = Business.objects.create(

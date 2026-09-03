@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Business Settings{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Business Settings</h2>
+</div>
+
+<div class="card" style="max-width:560px">
+  <h3 style="color:var(--ternah-navy);margin-bottom:.25rem">{{ business.name }}</h3>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.8rem">This letterhead appears on every printed report — Cashbook, Financial Reports, Batch Reports, all of it.</p>
+  <form method="post" class="stack">
+    {% csrf_token %}
+    <label>Tagline <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional — a short line under your business name)</span></label>
+    <input name="tagline" value="{{ business.tagline }}" placeholder="e.g. Quality cosmetics, made in Kampala" maxlength="150">
+    <label>Contact email</label>
+    <input name="contact_email" type="email" value="{{ business.contact_email }}" required>
+    <label>Contact phone</label>
+    <input name="contact_phone" value="{{ business.contact_phone }}">
+    <label>Address</label>
+    <textarea name="address" rows="2">{{ business.address }}</textarea>
+    <button class="btn" style="margin-top:1rem">Save</button>
+  </form>
+</div>
+{% endblock %}

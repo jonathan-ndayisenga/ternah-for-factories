@@ -7,10 +7,7 @@
   <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
 </div>
 
-<div class="print-only print-masthead">
-  <h1>{{ request.user.business.name }}</h1>
-  <p>Expense Journal — generated {% now "d M Y, H:i" %}</p>
-</div>
+{% include "partials/print_letterhead.html" with print_title=print_title %}
 
 <form method="get" class="no-print" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
   <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">From</label>
@@ -55,4 +52,5 @@
 </table>
 </div>
 {% include "partials/pagination.html" %}
+{% include "partials/print_footer.html" %}
 {% endblock %}

@@ -16,10 +16,7 @@
   <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
 </div>
 
-<div class="print-only print-masthead">
-  <h1>{{ request.user.business.name }}</h1>
-  <p>{% if request.user.role == "OWNER" %}Owner Dashboard{% else %}{{ request.user.branch.name }} Dashboard{% endif %} — generated {% now "d M Y, H:i" %}</p>
-</div>
+{% include "partials/print_letterhead.html" with print_title=print_title %}
 
 <!-- headline cards load over HTMX; re-load when the branch filter changes -->
 <div id="cards" hx-get="{% url 'reports:stats_cards' %}" hx-trigger="load, branchChanged from:body"
@@ -35,6 +32,7 @@
   <div class="card"><h3>Payment Method Split</h3><div class="chart-wrap"><canvas id="paySplit"></canvas></div></div>
   <div class="card"><h3>Expenses by Category</h3><div class="chart-wrap"><canvas id="expenses"></canvas></div></div>
 </div>
+{% include "partials/print_footer.html" %}
 {% endblock %}
 
 {% block scripts %}

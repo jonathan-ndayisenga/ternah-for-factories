@@ -203,10 +203,22 @@
       .card { box-shadow: none; border: 1px solid #E2E8F0; break-inside: avoid; }
       .charts-2 { grid-template-columns: 1fr; }
       .table-scroll { overflow-x: visible; box-shadow: none; }
-      .print-only { display: block; margin-bottom: 1.25rem; }
-      .print-masthead h1 { color: var(--ternah-navy); font-size: 1.4rem; }
-      .print-masthead p { color: var(--muted); font-size: .85rem; margin-top: .2rem; }
+      .print-only { display: block; }
       table.list th { background: #EDF1F5 !important; color: var(--text) !important; }
+
+      .print-letterhead { display: flex; justify-content: space-between; align-items: flex-start;
+                           gap: 1.5rem; padding-bottom: .9rem; margin-bottom: 1rem;
+                           border-bottom: 2.5px solid var(--ternah-navy); }
+      .print-letterhead-brand h1 { color: var(--ternah-navy); font-size: 1.5rem; font-weight: 800; line-height: 1.15; }
+      .print-letterhead-brand .print-tagline { color: var(--muted); font-size: .85rem; font-style: italic; margin-top: .2rem; }
+      .print-letterhead-contact { text-align: right; font-size: .78rem; color: var(--muted); line-height: 1.5; flex-shrink: 0; }
+      .print-report-title { margin-bottom: 1.25rem; }
+      .print-report-title h2 { font-size: 1.05rem; color: var(--text); font-weight: 700; }
+      .print-report-title p { color: var(--muted); font-size: .8rem; margin-top: .15rem; }
+
+      .print-footer { margin-top: 2rem; padding-top: .75rem; border-top: 1px solid #D7DEE6;
+                       text-align: center; color: var(--muted); font-size: .78rem; }
+      .print-footer .print-tagline { font-style: italic; }
     }
 
     /* ---------- Login split screen ---------- */
@@ -350,7 +362,7 @@
             Payment Accounts
           </a>
           <div class="nav-section-label">Manage</div>
-          <a class="nav-link {% if request.resolver_match.namespace == 'core' %}active{% endif %}"
+          <a class="nav-link {% if request.resolver_match.namespace == 'core' and request.resolver_match.url_name != 'business_settings' %}active{% endif %}"
              href="{% url 'core:branches' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/><path d="M9 9h.01M15 9h.01M9 13h.01M15 13h.01"/></svg>
             Branches
@@ -364,6 +376,11 @@
              href="{% url 'production:product_list' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.9 6.26L21 9.27l-4.5 4.39L17.8 21 12 17.77 6.2 21l1.3-7.34L3 9.27l6.1-1.01z"/></svg>
             Products & Pricing
+          </a>
+          <a class="nav-link {% if request.resolver_match.url_name == 'business_settings' %}active{% endif %}"
+             href="{% url 'core:business_settings' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            Business Settings
           </a>
         {% elif request.user.role == "MANAGER" %}
           <div class="nav-section-label">Branch</div>

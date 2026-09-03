@@ -32,7 +32,8 @@ def _branch_filter(request, qs, path="location__branch"):
 @login_required
 def owner_dashboard(request):
     biz = _biz(request)
-    return render(request, "reports/owner_dashboard.html", {"branches": biz.branches.all()})
+    print_title = "Owner Dashboard" if request.user.role == "OWNER" else f"{request.user.branch.name} Dashboard"
+    return render(request, "reports/owner_dashboard.html", {"branches": biz.branches.all(), "print_title": print_title})
 
 
 @login_required
@@ -117,11 +118,13 @@ def print_reports(request):
     debtors = _branch_filter(request, Debtor.objects.filter(business=biz).select_related("location__branch"))
     debtors = [d for d in debtors if d.balance() > 0]
 
+    scope = "one branch" if request.GET.get("branch") else "all branches"
     return render(request, "reports/print_reports.html", {
         "branches": biz.branches.all(), "sales": sales, "expenses": expenses, "debtors": debtors,
         "start": start, "end": end,
         "sales_total": sales.aggregate(s=Sum("total"))["s"] or 0,
         "expenses_total": expenses.aggregate(s=Sum("amount"))["s"] or 0,
+        "print_title": f"Report — {start} to {end} · {scope}",
     })
 
 

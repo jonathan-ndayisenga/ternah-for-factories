@@ -27,6 +27,7 @@ class Business(models.Model):
     contact_email = models.EmailField()
     contact_phone = models.CharField(max_length=30, blank=True)
     address = models.TextField(blank=True)
+    tagline = models.CharField(max_length=150, blank=True)      # optional — shows on every printed report
     is_active = models.BooleanField(default=True)               # master switch — False = soft-locked
     trial_expires_at = models.DateTimeField(null=True, blank=True)
     subscription_expires_at = models.DateTimeField(null=True, blank=True)

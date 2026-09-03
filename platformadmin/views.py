@@ -13,6 +13,7 @@ from django.utils.text import slugify
 from core.models import Branch
 from sales.models import InventoryLocation
 from .models import AuditLog, Business, Module, ModuleSubscription, SubscriptionExtension, add_months
+from .services import delete_business_completely
 
 superuser_required = user_passes_test(lambda u: u.is_superuser)
 
@@ -72,6 +73,7 @@ def onboard(request):
             contact_email=request.POST.get("contact_email", ""),
             contact_phone=request.POST.get("contact_phone", ""),
             address=request.POST.get("address", ""),
+            tagline=request.POST.get("tagline", "").strip(),
             subscription_expires_at=add_months(now, months),
         )
         # factory branch is created automatically — production lives here
@@ -79,9 +81,12 @@ def onboard(request):
         InventoryLocation.objects.create(business=biz, branch=factory, type="PRODUCTION_STORE")
 
         User = get_user_model()
-        admin = User.objects.create_user(
+        # The factory owner, not a manager — the owner is business-wide (no
+        # branch lock) and is the one who creates manager/cashier/etc. accounts
+        # themselves afterward, same as any other tenant admin.
+        owner = User.objects.create_user(
             username=request.POST["admin_username"], password=request.POST["admin_password"],
-            business=biz, branch=factory, role="MANAGER",
+            business=biz, branch=None, role="OWNER",
         )
 
         selected = set(request.POST.getlist("modules"))
@@ -94,22 +99,28 @@ def onboard(request):
             business=biz, months=months, filed_by=request.user,
             reason="Initial subscription at onboarding")
         AuditLog.write("TENANT_CREATED", actor=request.user, business=biz,
-                       description=f"Onboarded {biz.name}; admin={admin.username}; {months} month(s)")
+                       description=f"Onboarded {biz.name}; owner={owner.username}; {months} month(s)")
         return redirect("platformadmin:business_detail", pk=biz.pk)
     return render(request, "platformadmin/onboard.html", {"modules": modules})
+
+
+def _business_detail_context(biz, **extra):
+    _ensure_module_catalog()
+    all_modules = list(Module.objects.all().order_by("code"))
+    subscribed_ids = set(biz.subscriptions.filter(is_active=True).values_list("module_id", flat=True))
+    context = {
+        "business": biz, "modules": all_modules, "subscribed_ids": subscribed_ids,
+        "extensions": biz.extensions.order_by("-created_at")[:20],
+        "audit": AuditLog.objects.filter(business=biz).order_by("-created_at")[:30],
+    }
+    context.update(extra)
+    return context
 
 
 @superuser_required
 def business_detail(request, pk):
     biz = get_object_or_404(Business, pk=pk)
-    _ensure_module_catalog()
-    all_modules = list(Module.objects.all().order_by("code"))
-    subscribed_ids = set(biz.subscriptions.filter(is_active=True).values_list("module_id", flat=True))
-    return render(request, "platformadmin/business_detail.html", {
-        "business": biz, "modules": all_modules, "subscribed_ids": subscribed_ids,
-        "extensions": biz.extensions.order_by("-created_at")[:20],
-        "audit": AuditLog.objects.filter(business=biz).order_by("-created_at")[:30],
-    })
+    return render(request, "platformadmin/business_detail.html", _business_detail_context(biz))
 
 
 @superuser_required
@@ -173,3 +184,23 @@ def toggle_active(request, pk):
         AuditLog.write("ACCOUNT_ACTIVATED" if biz.is_active else "ACCOUNT_LOCKED",
                        actor=request.user, business=biz)
     return redirect(_safe_next(request, reverse("platformadmin:business_detail", args=[biz.pk])))
+
+
+@superuser_required
+def delete_business(request, pk):
+    """Irreversible — every sale, batch, ledger entry, everything this tenant
+    ever had goes with it. Requires typing the exact business name back, both
+    client-side (so the button won't even enable) and server-side (so the
+    check is real, not just cosmetic)."""
+    biz = get_object_or_404(Business, pk=pk)
+    if request.method == "POST":
+        typed = request.POST.get("confirm_name", "").strip()
+        if typed == biz.name:
+            name, biz_pk = biz.name, biz.pk
+            AuditLog.write("TENANT_DELETED", actor=request.user, business=biz,
+                           description=f"Deleted {name} (business id {biz_pk}) and all its data")
+            delete_business_completely(biz)
+            return redirect("platformadmin:dashboard")
+        return render(request, "platformadmin/business_detail.html", _business_detail_context(
+            biz, delete_error="That doesn't match the factory name exactly — nothing was deleted."))
+    return redirect("platformadmin:business_detail", pk=biz.pk)

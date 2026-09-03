@@ -1,0 +1,9 @@
+{% comment %}Usage: {% include "partials/print_footer.html" %} — place at the very end of the printable content.{% endcomment %}
+<div class="print-only print-footer">
+  {% if request.user.business.tagline %}<p class="print-tagline">{{ request.user.business.tagline }}</p>{% endif %}
+  <p>
+    {{ request.user.business.name }}
+    {% if request.user.business.contact_email %} · {{ request.user.business.contact_email }}{% endif %}
+    {% if request.user.business.contact_phone %} · {{ request.user.business.contact_phone }}{% endif %}
+  </p>
+</div>

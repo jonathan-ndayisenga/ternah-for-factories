@@ -35,7 +35,7 @@
 <div class="wizard-card">
   <div class="wizard-head">
     <h2>Onboard a Factory</h2>
-    <p>Four quick steps — business details, an admin login, the modules they get, and how long they've paid for.</p>
+    <p>Four quick steps — business details, an owner login, the modules they get, and how long they've paid for.</p>
   </div>
   <div class="wizard-progress">
     <div class="wizard-dot" data-dot="1"></div>
@@ -53,6 +53,8 @@
         <div class="wizard-step-label">Step 1 — Business & Contact</div>
         <label>Factory name <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(brands the navbar, receipts and batch reports)</span></label>
         <input name="name" required>
+        <label>Tagline <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional — appears on every printed report; the owner can set or change this later too)</span></label>
+        <input name="tagline" maxlength="150" placeholder="e.g. Quality cosmetics, made in Kampala">
         <label>Contact email</label>
         <input name="contact_email" type="email" required>
         <label>Contact phone <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
@@ -63,9 +65,9 @@
       </div>
 
       <div class="wizard-step" data-step="2">
-        <div class="wizard-step-label">Step 2 — Admin Account</div>
-        <p style="color:var(--muted);font-size:.85rem;margin-bottom:.6rem">This is the manager the factory hands off to once onboarding is done. A "Factory" branch is created automatically for the production line.</p>
-        <label>Admin username</label>
+        <div class="wizard-step-label">Step 2 — Owner Account</div>
+        <p style="color:var(--muted);font-size:.85rem;margin-bottom:.6rem">This is the factory owner — business-wide, not locked to one branch. They log in and create their own manager, cashier, and other staff accounts from there. A "Factory" branch is created automatically for the production line.</p>
+        <label>Owner username</label>
         <input name="admin_username" required>
         <label>Temporary password</label>
         <input name="admin_password" required>
@@ -154,12 +156,12 @@ function updatePreview() {
 
 function updateReview() {
   const name = document.querySelector('[name="name"]').value || "—";
-  const admin = document.querySelector('[name="admin_username"]').value || "—";
+  const owner = document.querySelector('[name="admin_username"]').value || "—";
   const moduleCount = document.querySelectorAll('[name="modules"]:checked').length;
   const months = document.getElementById("monthsInput").value || "0";
   document.getElementById("reviewList").innerHTML = `
     <li><span>Factory</span><span>${name}</span></li>
-    <li><span>Admin login</span><span>${admin}</span></li>
+    <li><span>Owner login</span><span>${owner}</span></li>
     <li><span>Modules</span><span>${moduleCount} selected</span></li>
     <li><span>Subscription</span><span>${months} month${months == 1 ? "" : "s"}</span></li>
   `;

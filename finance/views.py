@@ -110,9 +110,10 @@ def cashbook(request):
     closing_balance = running
 
     page_obj, extra_qs = _paginate(request, entries)
+    print_title = "Cashbook" + (f" — {request.user.branch.name}" if request.user.role == "MANAGER" else "")
     return render(request, "finance/cashbook.html", {
         "page_obj": page_obj, "extra_qs": extra_qs, "closing_balance": closing_balance,
-        "opening_balances": opening_balances,
+        "opening_balances": opening_balances, "print_title": print_title,
     })
 
 
@@ -185,7 +186,8 @@ def journal(request):
 
     entries.sort(key=lambda x: x["sort_date"], reverse=True)
     page_obj, extra_qs = _paginate(request, entries)
-    return render(request, "finance/journal.html", {"page_obj": page_obj, "extra_qs": extra_qs})
+    print_title = "Activity" + (f" — {branch.name}" if branch else "")
+    return render(request, "finance/journal.html", {"page_obj": page_obj, "extra_qs": extra_qs, "print_title": print_title})
 
 
 @login_required
@@ -199,7 +201,8 @@ def general_ledger(request):
     if request.user.role == "MANAGER":
         entries = entries.filter(branch=request.user.branch)
     page_obj, extra_qs = _paginate(request, entries, page_size=15)
-    return render(request, "finance/general_ledger.html", {"page_obj": page_obj, "extra_qs": extra_qs})
+    print_title = "General Ledger" + (f" — {request.user.branch.name}" if request.user.role == "MANAGER" else "")
+    return render(request, "finance/general_ledger.html", {"page_obj": page_obj, "extra_qs": extra_qs, "print_title": print_title})
 
 
 @login_required
@@ -219,9 +222,10 @@ def expense_journal(request):
     total = qs.aggregate(s=Sum("amount"))["s"] or Decimal("0")
     by_category = qs.values("category").annotate(total=Sum("amount")).order_by("-total")
     page_obj, extra_qs = _paginate(request, qs)
+    print_title = "Expense Journal" + (f" — {request.user.branch.name}" if request.user.role == "MANAGER" else "")
     return render(request, "finance/expense_journal.html", {
         "page_obj": page_obj, "extra_qs": extra_qs, "total": total, "by_category": by_category,
-        "date_from": date_from, "date_to": date_to,
+        "date_from": date_from, "date_to": date_to, "print_title": print_title,
     })
 
 
@@ -317,7 +321,7 @@ def financial_reports(request):
         "rm_inventory": rm_inventory, "fg_inventory": fg_inventory, "total_assets": total_assets,
         "payable": payable, "capital": capital, "retained_earnings": retained_earnings,
         "total_liabilities_equity": payable + capital + retained_earnings,
-        "product_rows": product_rows,
+        "product_rows": product_rows, "print_title": "Financial Reports",
     })
 
 
