@@ -178,6 +178,7 @@ class Distribution(TimeStamped):
                                      related_name="distributions_confirmed")
     stock_request = models.ForeignKey("sales.StockRequest", null=True, blank=True, on_delete=models.SET_NULL,
                                       related_name="distributions")   # set when this delivery answers a request
+    note = models.TextField(blank=True)   # e.g. "sent less than asked, rest still brewing"
 
 
 class DistributionLine(models.Model):

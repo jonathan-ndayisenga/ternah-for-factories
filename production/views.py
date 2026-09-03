@@ -688,12 +688,27 @@ def stock_request_fulfill(request, pk):
         business=biz, receiver_location=stock_request.requester_location,
         delivery_note_number=f"DN-{request.user.username[:4].upper()}-{today:%d%m%y}-{seq:03d}",
         date=today, status="SENT", created_by=request.user, stock_request=stock_request,
+        note=request.POST.get("note", "").strip(),
     )
     new_lines, sent_bits, short_bits = [], [], []
     for entry in plan:
-        product, send_now = entry["product"], entry["send_now"]
+        product, auto_send, short = entry["product"], entry["send_now"], entry["short"]
         line = {"product_id": entry["product_id"], "quantity": entry["quantity"],
                 "fulfilled": entry["fulfilled"], "dropped": entry["dropped"]}
+
+        # a manager can send less than the full amount on offer (holding
+        # some back for another outlet, pacing deliveries, etc.) — but never
+        # more than what's actually owed and in stock, so the field only
+        # ever clamps down from auto_send, never up
+        qty_raw = request.POST.get(f"qty_{entry['product_id']}")
+        if qty_raw not in (None, ""):
+            try:
+                send_now = max(0, min(int(qty_raw), auto_send))
+            except (TypeError, ValueError):
+                send_now = auto_send
+        else:
+            send_now = auto_send
+
         if product and product.status == "ACTIVE" and send_now > 0:
             store_item = StockItem.objects.filter(location=factory_store, product=product).first()
             _dispense_finished_goods_fefo(dist, product, send_now)
@@ -704,12 +719,16 @@ def stock_request_fulfill(request, pk):
                                          moved_by=request.user, counterparty=stock_request.requester_location)
             line["fulfilled"] += send_now
             sent_bits.append(f"{product.name} ×{send_now}")
+
+        if short > 0 and stock_request.fulfillment_mode == "AVAILABLE_ONLY":
+            # a genuine stock shortfall, and they said don't wait for it —
+            # but stock a manager deliberately held back (not a shortfall)
+            # always stays queued, regardless of that preference
+            line["dropped"] += short
+
         outstanding = line["quantity"] - line["fulfilled"] - line["dropped"]
         if outstanding > 0:
-            if stock_request.fulfillment_mode == "AVAILABLE_ONLY":
-                line["dropped"] += outstanding   # they said "just send what you have" — close the gap out
-            else:
-                short_bits.append(f"{product.name if product else 'unknown product'} ×{outstanding}")
+            short_bits.append(f"{product.name if product else 'unknown product'} ×{outstanding}")
         new_lines.append(line)
 
     stock_request.lines = new_lines

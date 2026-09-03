@@ -15,7 +15,10 @@
     <td>{{ d.date|date:"d M Y" }}</td>
     <td>{{ d.created_by.username|default:"—" }}</td>
     <td>{{ d.receiver_location.branch.name }} — {{ d.receiver_location.rep.username|default:d.receiver_location.get_type_display }}</td>
-    <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if line.batch %} <span style="color:var(--muted);font-size:.78rem">({{ line.batch.batch_number }})</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+    <td>
+      {% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if line.batch %} <span style="color:var(--muted);font-size:.78rem">({{ line.batch.batch_number }})</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}
+      {% if d.note %}<br><span style="color:var(--muted);font-size:.78rem;font-style:italic">{{ d.note }}</span>{% endif %}
+    </td>
     <td>
       {% if d.status == "RECEIVED" %}<span class="pill active">Received</span>
       {% elif d.status == "DISPUTED" %}<span class="pill locked">Disputed</span>
