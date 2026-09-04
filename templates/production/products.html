@@ -9,11 +9,22 @@
     <a class="btn" href="{% url 'production:product_create' %}">+ Add Product</a>
   {% endif %}
 </div>
+<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem">
+  <input id="prodSearch" type="text" placeholder="Search products…" oninput="filterProducts()"
+         style="flex:1;min-width:200px;padding:.6rem .8rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">
+  <select id="prodStatusFilter" onchange="filterProducts()" style="padding:.6rem .8rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">
+    <option value="">All statuses</option>
+    <option value="ACTIVE">Active</option>
+    <option value="DRAFT">Draft</option>
+    <option value="ARCHIVED">Archived</option>
+  </select>
+</div>
 <div class="table-scroll">
-<table class="list">
+<table class="list" id="prodTable">
   <tr><th>Product</th><th>Category</th><th>Status</th><th>Cost (latest)</th><th>Retail</th><th>Wholesale</th><th>Distribution</th><th>Custom</th><th></th><th></th><th></th></tr>
   {% for p in products %}
-  <tr{% if p.status == "ARCHIVED" %} style="opacity:.55"{% endif %}>
+  <tr{% if p.status == "ARCHIVED" %} style="opacity:.55"{% endif %}
+      data-name="{{ p.name|lower }} {{ p.category.name|lower }} {{ p.sku|lower }}" data-status="{{ p.status }}">
     <td><strong>{{ p.name }}</strong>{% if p.pack_size %}<br><span style="color:var(--muted);font-size:.8rem">{{ p.pack_size }}</span>{% endif %}</td>
     <td>{{ p.category.name }}</td>
     <td>
@@ -60,6 +71,27 @@
     </td>
   </tr>
   {% empty %}<tr><td colspan="11" style="color:var(--muted)">No products yet.</td></tr>{% endfor %}
+  <tr id="prodNoMatches" style="display:none"><td colspan="11" style="color:var(--muted)">No products match your search.</td></tr>
 </table>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterProducts() {
+  const q = document.getElementById("prodSearch").value.trim().toLowerCase();
+  const status = document.getElementById("prodStatusFilter").value;
+  const rows = document.querySelectorAll("#prodTable tr[data-name]");
+  let visible = 0;
+  rows.forEach(row => {
+    const matchesName = !q || row.dataset.name.includes(q);
+    const matchesStatus = !status || row.dataset.status === status;
+    const show = matchesName && matchesStatus;
+    row.style.display = show ? "" : "none";
+    if (show) visible++;
+  });
+  const noMatches = document.getElementById("prodNoMatches");
+  if (noMatches) noMatches.style.display = (rows.length && !visible) ? "" : "none";
+}
+</script>
 {% endblock %}

@@ -6,11 +6,22 @@
   <span class="spacer"></span>
   <a class="btn" href="{% url 'production:raw_material_create' %}">+ New Material</a>
 </div>
+<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem">
+  <input id="rmSearch" type="text" placeholder="Search materials…" oninput="filterMaterials()"
+         style="flex:1;min-width:200px;padding:.6rem .8rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">
+  <select id="rmStatusFilter" onchange="filterMaterials()" style="padding:.6rem .8rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">
+    <option value="">All statuses</option>
+    <option value="active">Active</option>
+    <option value="reorder">Reorder</option>
+    <option value="inactive">Inactive</option>
+  </select>
+</div>
 <div class="table-scroll">
-<table class="list">
+<table class="list" id="rmTable">
   <tr><th>Material</th><th>Unit</th><th>Stock on hand</th><th>Reorder level</th><th>Latest unit cost</th><th>Status</th><th></th></tr>
   {% for m in materials %}
-  <tr{% if not m.is_active %} style="opacity:.55"{% endif %}>
+  <tr{% if not m.is_active %} style="opacity:.55"{% endif %} data-name="{{ m.name|lower }}"
+      data-status="{% if not m.is_active %}inactive{% elif m.low %}reorder{% else %}active{% endif %}">
     <td><strong>{{ m.name }}</strong></td>
     <td>{{ m.unit_of_measure }}</td>
     <td>{{ m.stock|floatformat:3 }}</td>
@@ -35,6 +46,27 @@
     </td>
   </tr>
   {% empty %}<tr><td colspan="7" style="color:var(--muted)">No raw materials yet.</td></tr>{% endfor %}
+  <tr id="rmNoMatches" style="display:none"><td colspan="7" style="color:var(--muted)">No materials match your search.</td></tr>
 </table>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterMaterials() {
+  const q = document.getElementById("rmSearch").value.trim().toLowerCase();
+  const status = document.getElementById("rmStatusFilter").value;
+  const rows = document.querySelectorAll("#rmTable tr[data-name]");
+  let visible = 0;
+  rows.forEach(row => {
+    const matchesName = !q || row.dataset.name.includes(q);
+    const matchesStatus = !status || row.dataset.status === status;
+    const show = matchesName && matchesStatus;
+    row.style.display = show ? "" : "none";
+    if (show) visible++;
+  });
+  const noMatches = document.getElementById("rmNoMatches");
+  if (noMatches) noMatches.style.display = (rows.length && !visible) ? "" : "none";
+}
+</script>
 {% endblock %}

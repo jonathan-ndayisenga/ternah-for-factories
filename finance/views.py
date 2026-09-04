@@ -108,9 +108,10 @@ def cashbook(request):
         # belong in the business-wide (Owner) cashbook, and only the ones
         # actually paid in cash; on-credit ones haven't touched cash yet
         for rm in RawMaterialPurchase.objects.filter(raw_material__business=biz, on_credit=False) \
-                .select_related("raw_material", "recorded_by"):
+                .select_related("raw_material", "supplier", "recorded_by"):
+            ref = rm.raw_material.name + (f" (from {rm.supplier.name})" if rm.supplier else "")
             entries.append({"sort_date": rm.purchase_date, "when": _as_datetime(rm.purchase_date),
-                            "type": "RM Purchase", "ref": rm.raw_material.name, "method": "Cash",
+                            "type": "RM Purchase", "ref": ref, "method": "Cash",
                             "amount": -rm.total_cost, "by": rm.recorded_by})
 
     entries.sort(key=lambda x: (x["sort_date"], x["type"]))
@@ -198,10 +199,11 @@ def journal(request):
 
     if not branch:   # raw material purchases aren't branch-scoped — Owner's activity feed only
         for rm in RawMaterialPurchase.objects.filter(raw_material__business=biz).select_related("raw_material", "supplier", "recorded_by"):
-            paid = f"on credit from {rm.supplier.name}" if rm.on_credit and rm.supplier else "paid in cash"
+            paid = "on credit" if rm.on_credit else "paid in cash"
+            supplier_bit = f" — supplier: {rm.supplier.name}" if rm.supplier else ""
             entries.append({
                 "sort_date": rm.purchase_date, "when": _as_datetime(rm.purchase_date), "type": "RM Purchase",
-                "description": f"{rm.quantity} {rm.raw_material.unit_of_measure} of {rm.raw_material.name} — {paid}",
+                "description": f"{rm.quantity} {rm.raw_material.unit_of_measure} of {rm.raw_material.name} — {paid}{supplier_bit}",
                 "amount": -rm.total_cost, "by": rm.recorded_by,
             })
 
