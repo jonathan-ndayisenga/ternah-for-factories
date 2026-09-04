@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ product.name }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Edit Product</h2>
+  {% if error %}<p style="color:var(--red);font-weight:600;font-size:.9rem;margin-bottom:.5rem">{{ error }}</p>{% endif %}
+  <form method="post" class="stack">
+    {% csrf_token %}
+    <label>Category</label>
+    <select name="category" required>
+      {% for c in categories %}<option value="{{ c.pk }}" {% if c.pk == product.category_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select>
+    <label>Name</label>
+    <input name="name" value="{{ product.name }}" required placeholder="e.g. Body Oil 50ml">
+    <label>Pack size <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input name="pack_size" value="{{ product.pack_size }}" placeholder="e.g. 50 ml">
+    <label>SKU <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input name="sku" value="{{ product.sku }}">
+    <label>Shelf life, in days <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional — auto-suggests expiry when a batch of this product is completed)</span></label>
+    <input name="shelf_life_days" type="number" min="1" value="{{ product.shelf_life_days|default:'' }}" placeholder="e.g. 365">
+    <button class="btn" style="margin-top:1.2rem">Save changes</button>
+  </form>
+</div>
+{% endblock %}

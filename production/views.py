@@ -106,6 +106,51 @@ def product_create(request):
     return render(request, "production/product_create.html", {"categories": categories})
 
 
+@production_staff_required
+def product_edit(request, pk):
+    biz = request.user.business
+    product = get_object_or_404(Product, pk=pk, business=biz)
+    categories = Category.objects.filter(business=biz).order_by("name")
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        category = categories.filter(pk=request.POST.get("category")).first()
+        if name and category:
+            try:
+                shelf_life_days = int(request.POST.get("shelf_life_days") or 0) or None
+            except ValueError:
+                shelf_life_days = None
+            product.name = name
+            product.category = category
+            product.pack_size = request.POST.get("pack_size", "").strip()
+            product.sku = request.POST.get("sku", "").strip()
+            product.shelf_life_days = shelf_life_days
+            product.save(update_fields=["name", "category", "pack_size", "sku", "shelf_life_days"])
+            return redirect("production:product_list")
+        return render(request, "production/product_edit.html", {
+            "product": product, "categories": categories, "error": "Name and category are both required.",
+        })
+    return render(request, "production/product_edit.html", {"product": product, "categories": categories})
+
+
+@production_staff_required
+def product_toggle_archive(request, pk):
+    """Soft delete — a product's formulas, batches, sales history and
+    distributions all point back at it (several PROTECT), so it's never
+    actually removed. Archiving takes it out of New Batch and Send Stock
+    (nothing new gets made or shipped of it) but existing stock already
+    sitting at an outlet can still be sold through, and its whole history
+    stays intact and visible everywhere it already appears."""
+    biz = request.user.business
+    product = get_object_or_404(Product, pk=pk, business=biz)
+    if request.method == "POST":
+        if product.status == "ARCHIVED":
+            product.status = "ACTIVE" if product.retail_price is not None else "DRAFT"
+        else:
+            product.status = "ARCHIVED"
+        product.save(update_fields=["status"])
+    return redirect("production:product_list")
+
+
 @catalog_staff_required
 def product_price_edit(request, pk):
     biz = request.user.business
@@ -417,8 +462,10 @@ def raw_material_purchase(request, pk):
             quantity = Decimal(request.POST.get("quantity", ""))
             total_cost = Decimal(request.POST.get("total_cost", ""))
         except InvalidOperation:
+            messages.error(request, "Quantity and total cost must both be real numbers.")
             return redirect("production:raw_material_purchase", pk=material.pk)
         if quantity <= 0 or total_cost <= 0:
+            messages.error(request, "Quantity and total cost must both be greater than zero.")
             return redirect("production:raw_material_purchase", pk=material.pk)
 
         supplier = None
@@ -426,6 +473,9 @@ def raw_material_purchase(request, pk):
         if supplier_name:
             supplier, _ = Supplier.objects.get_or_create(business=biz, name=supplier_name)
         on_credit = "on_credit" in request.POST
+        if on_credit and not supplier:
+            messages.error(request, "Buying on credit needs a supplier name — that's who the payable is filed against.")
+            return redirect("production:raw_material_purchase", pk=material.pk)
 
         purchase = RawMaterialPurchase.objects.create(
             raw_material=material, quantity=quantity, total_cost=total_cost,
@@ -434,7 +484,7 @@ def raw_material_purchase(request, pk):
             expiry_date=request.POST.get("expiry_date") or None,
             manufacture_date=request.POST.get("manufacture_date") or None,
             country_of_origin=request.POST.get("country_of_origin", "").strip(),
-            supplier=supplier, on_credit=on_credit,
+            supplier=supplier, on_credit=on_credit, recorded_by=request.user,
         )
         if on_credit and supplier:
             SupplierPayable.objects.create(
@@ -443,6 +493,10 @@ def raw_material_purchase(request, pk):
                 total_amount=total_cost, status="OPEN",
             )
         post_raw_material_purchase(purchase)
+        messages.success(request, f"Purchase recorded: {quantity} {material.unit_of_measure} of {material.name} "
+                                  f"for UGX {total_cost:,.0f}"
+                                  + (f" on credit from {supplier.name}." if on_credit else " — paid in cash.")
+                                  + " It's posted to the books and will show in the Cashbook/Activity.")
         return redirect("production:raw_materials")
 
     return render(request, "production/raw_material_purchase.html", {"material": material})
@@ -534,7 +588,7 @@ def batch_create(request):
     back to purchase date — recording exactly which purchase fed the batch."""
     biz = request.user.business
     products, batch_data = [], {}
-    for p in Product.objects.filter(business=biz).select_related("category"):
+    for p in Product.objects.filter(business=biz).exclude(status="ARCHIVED").select_related("category"):
         # the most recent APPROVED version is the one that counts — if it's
         # been deactivated, don't silently fall back to an older approved
         # version, since that could dispense against a stale recipe/costing

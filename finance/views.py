@@ -24,7 +24,7 @@ def _paginate(request, items, page_size=PAGE_SIZE):
     return page_obj, qd.urlencode()
 
 from core.models import Branch
-from production.models import Distribution
+from production.models import Distribution, RawMaterialPurchase
 from sales.models import BankAccount, DailyOpeningBalance, DebtorPayment, Expense, MomoAccount, PendingAction, Sale, SaleItem
 from .models import JournalEntry, JournalLine, LedgerAccount
 from .services import get_accounts, post_capital_transaction
@@ -103,6 +103,15 @@ def cashbook(request):
     for e in Expense.objects.filter(business=biz, **branch_filter).select_related("recorded_by"):
         entries.append({"sort_date": e.date, "when": _as_datetime(e.date), "type": "Expense",
                         "ref": e.category, "method": "—", "amount": -e.amount, "by": e.recorded_by})
+    if request.user.role == "OWNER":
+        # raw material purchases aren't tied to any one branch — they only
+        # belong in the business-wide (Owner) cashbook, and only the ones
+        # actually paid in cash; on-credit ones haven't touched cash yet
+        for rm in RawMaterialPurchase.objects.filter(raw_material__business=biz, on_credit=False) \
+                .select_related("raw_material", "recorded_by"):
+            entries.append({"sort_date": rm.purchase_date, "when": _as_datetime(rm.purchase_date),
+                            "type": "RM Purchase", "ref": rm.raw_material.name, "method": "Cash",
+                            "amount": -rm.total_cost, "by": rm.recorded_by})
 
     entries.sort(key=lambda x: (x["sort_date"], x["type"]))
     running = Decimal("0")
@@ -186,6 +195,15 @@ def journal(request):
             "description": f"{e.category}" + (f" — {e.note}" if e.note else ""),
             "amount": -e.amount, "by": e.recorded_by,
         })
+
+    if not branch:   # raw material purchases aren't branch-scoped — Owner's activity feed only
+        for rm in RawMaterialPurchase.objects.filter(raw_material__business=biz).select_related("raw_material", "supplier", "recorded_by"):
+            paid = f"on credit from {rm.supplier.name}" if rm.on_credit and rm.supplier else "paid in cash"
+            entries.append({
+                "sort_date": rm.purchase_date, "when": _as_datetime(rm.purchase_date), "type": "RM Purchase",
+                "description": f"{rm.quantity} {rm.raw_material.unit_of_measure} of {rm.raw_material.name} — {paid}",
+                "amount": -rm.total_cost, "by": rm.recorded_by,
+            })
 
     entries.sort(key=lambda x: x["sort_date"], reverse=True)
     page_obj, extra_qs = _paginate(request, entries)

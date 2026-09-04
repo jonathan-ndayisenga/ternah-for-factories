@@ -4,7 +4,7 @@
 <div class="card" style="max-width:560px;margin:0 auto">
   <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">{{ material.name }}</h2>
   <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Record a new purchase batch — tracked separately for FEFO and traceability.</p>
-  <form method="post" class="stack">
+  <form method="post" class="stack" onsubmit="return confirmPurchase()">
     {% csrf_token %}
     <label>Quantity ({{ material.unit_of_measure }})</label>
     <input name="quantity" id="qty" type="number" step="0.001" min="0.001" required oninput="updateUnitCost()">
@@ -37,6 +37,15 @@
 
 {% block scripts %}
 <script>
+function confirmPurchase() {
+  const qty = document.getElementById("qty").value;
+  const total = document.getElementById("totalCost").value;
+  const onCredit = document.querySelector('input[name="on_credit"]').checked;
+  const money = onCredit
+    ? `UGX ${total} on credit — this files a supplier payable`
+    : `UGX ${total} paid in cash — this reduces Cash on Hand`;
+  return confirm(`Record this purchase?\n\n${qty} {{ material.unit_of_measure|escapejs }} of {{ material.name|escapejs }}\n${money}\n\nThis posts straight to the books and can't be edited afterward — only reversed by a correcting entry.`);
+}
 function updateUnitCost() {
   const qty = parseFloat(document.getElementById("qty").value);
   const total = parseFloat(document.getElementById("totalCost").value);

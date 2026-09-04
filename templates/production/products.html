@@ -11,9 +11,9 @@
 </div>
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Product</th><th>Category</th><th>Status</th><th>Cost (latest)</th><th>Retail</th><th>Wholesale</th><th>Distribution</th><th>Custom</th><th></th><th></th></tr>
+  <tr><th>Product</th><th>Category</th><th>Status</th><th>Cost (latest)</th><th>Retail</th><th>Wholesale</th><th>Distribution</th><th>Custom</th><th></th><th></th><th></th></tr>
   {% for p in products %}
-  <tr>
+  <tr{% if p.status == "ARCHIVED" %} style="opacity:.55"{% endif %}>
     <td><strong>{{ p.name }}</strong>{% if p.pack_size %}<br><span style="color:var(--muted);font-size:.8rem">{{ p.pack_size }}</span>{% endif %}</td>
     <td>{{ p.category.name }}</td>
     <td>
@@ -44,8 +44,22 @@
         <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:formula_edit' p.pk %}">Formula</a>
       {% endif %}
     </td>
+    <td>
+      {% if request.user.role == "OWNER" or request.user.role == "PRODUCTION" or active_view == "PRODUCTION" %}
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.4rem .6rem;min-height:auto" href="{% url 'production:product_edit' p.pk %}">Edit</a>
+        <form method="post" action="{% url 'production:product_toggle_archive' p.pk %}"
+              onsubmit="return confirm('{% if p.status == "ARCHIVED" %}Bring {{ p.name|escapejs }} back? It becomes producible and distributable again, same as before it was archived.{% else %}Archive {{ p.name|escapejs }}? It stops appearing in New Batch and Send Stock, so nothing new gets made or shipped of it — but nothing is deleted: its formula, cost history and sales stay exactly as they are, and any stock already sitting at an outlet can still be sold through. You can bring it back any time.{% endif %}')">
+          {% csrf_token %}
+          <button class="btn ghost" style="padding:.4rem .6rem;min-height:auto;{% if p.status == "ARCHIVED" %}background:#D6EAD8;color:var(--green){% else %}background:#FDECEA;color:var(--red){% endif %}">
+            {% if p.status == "ARCHIVED" %}Bring back{% else %}Archive{% endif %}
+          </button>
+        </form>
+      </div>
+      {% endif %}
+    </td>
   </tr>
-  {% empty %}<tr><td colspan="10" style="color:var(--muted)">No products yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="11" style="color:var(--muted)">No products yet.</td></tr>{% endfor %}
 </table>
 </div>
 {% endblock %}

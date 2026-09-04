@@ -47,6 +47,7 @@ class RawMaterialPurchase(TimeStamped):
     country_of_origin = models.CharField(max_length=80, blank=True)
     supplier = models.ForeignKey("finance.Supplier", null=True, blank=True, on_delete=models.SET_NULL)
     on_credit = models.BooleanField(default=False)   # True -> creates a SupplierPayable
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
 
     def save(self, *args, **kwargs):
         self.unit_cost = (self.total_cost / self.quantity).quantize(Decimal("0.0001"))
