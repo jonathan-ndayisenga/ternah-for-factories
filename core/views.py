@@ -66,3 +66,16 @@ def branch_edit(request, pk):
             return redirect("core:branches")
         return render(request, "core/branch_edit.html", {"branch": branch, "error": "Branch name is required."})
     return render(request, "core/branch_edit.html", {"branch": branch})
+
+
+@owner_required
+def branch_toggle_active(request, pk):
+    """Soft delete — a branch is the spine everything else (users,
+    inventory, sales) hangs off, so it's never actually deleted. Deactivating
+    just flags it; its history, stock and reports stay exactly as they are."""
+    biz = request.user.business
+    branch = get_object_or_404(Branch, pk=pk, business=biz)
+    if request.method == "POST":
+        branch.is_active = not branch.is_active
+        branch.save(update_fields=["is_active"])
+    return redirect("core:branches")

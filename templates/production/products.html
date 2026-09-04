@@ -5,7 +5,7 @@
   <h2>Products & Pricing</h2>
   <span class="spacer"></span>
   {% if awaiting_count %}<span class="pill warning">{{ awaiting_count }} awaiting pricing</span>{% endif %}
-  {% if request.user.role == "OWNER" or request.user.role == "PRODUCTION" %}
+  {% if request.user.role == "OWNER" or request.user.role == "PRODUCTION" or active_view == "PRODUCTION" %}
     <a class="btn" href="{% url 'production:product_create' %}">+ Add Product</a>
   {% endif %}
 </div>
@@ -40,7 +40,7 @@
       <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:product_price_edit' p.pk %}">{% if p.status == "DRAFT" %}Price it{% else %}Edit prices{% endif %}</a>
     </td>
     <td>
-      {% if request.user.role == "OWNER" or request.user.role == "PRODUCTION" %}
+      {% if request.user.role == "OWNER" or request.user.role == "PRODUCTION" or active_view == "PRODUCTION" %}
         <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'production:formula_edit' p.pk %}">Formula</a>
       {% endif %}
     </td>

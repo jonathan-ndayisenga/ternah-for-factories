@@ -15,7 +15,16 @@
     <td><span class="pill {% if b.kind == 'FACTORY' %}warning{% else %}active{% endif %}">{{ b.get_kind_display }}</span></td>
     <td>{{ b.address|default:"—" }}</td>
     <td>{% if b.is_active %}<span class="pill active">Active</span>{% else %}<span class="pill locked">Inactive</span>{% endif %}</td>
-    <td><a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.4rem .7rem;min-height:auto" href="{% url 'core:branch_edit' b.pk %}">Edit</a></td>
+    <td style="display:flex;gap:.4rem">
+      <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.4rem .7rem;min-height:auto" href="{% url 'core:branch_edit' b.pk %}">Edit</a>
+      <form method="post" action="{% url 'core:branch_toggle_active' b.pk %}"
+            onsubmit="return confirm('{% if b.is_active %}Deactivate {{ b.name|escapejs }}? It will be hidden from day-to-day use, but nothing about it — users, inventory, sales history — is deleted. You can reactivate it any time.{% else %}Reactivate {{ b.name|escapejs }}?{% endif %}')">
+        {% csrf_token %}
+        <button class="btn ghost" style="padding:.4rem .7rem;min-height:auto;{% if b.is_active %}background:#FDECEA;color:var(--red){% else %}background:#D6EAD8;color:var(--green){% endif %}">
+          {% if b.is_active %}Deactivate{% else %}Reactivate{% endif %}
+        </button>
+      </form>
+    </td>
   </tr>
   {% empty %}<tr><td colspan="5" style="color:var(--muted)">No branches yet — add your first one.</td></tr>{% endfor %}
 </table>

@@ -193,6 +193,19 @@ def user_edit(request, pk):
     available_modules = _modules_for_role(biz, target.role)
 
     if request.method == "POST":
+        new_username = request.POST.get("username", "").strip()
+        if not new_username:
+            return render(request, "accounts/user_edit.html", {
+                "target": target, "available_modules": available_modules, "tier_choices": PRICE_TIERS,
+                "error": "Username can't be blank.",
+            })
+        if User.objects.filter(username=new_username).exclude(pk=target.pk).exists():
+            return render(request, "accounts/user_edit.html", {
+                "target": target, "available_modules": available_modules, "tier_choices": PRICE_TIERS,
+                "error": f'"{new_username}" is already taken by another account.',
+            })
+
+        target.username = new_username
         target.can_swap = "can_swap" in request.POST
         target.can_refund = "can_refund" in request.POST
         target.is_active = "is_active" in request.POST

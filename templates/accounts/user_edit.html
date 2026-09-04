@@ -46,7 +46,16 @@
     </div>
   </div>
 
+  {% if error %}<p style="color:var(--red);font-weight:600;font-size:.9rem;margin-bottom:1rem">{{ error }}</p>{% endif %}
+
   <form method="post" id="userEditForm" onsubmit="return confirmUserEdit()">{% csrf_token %}
+
+    <div class="ue-section">
+      <h3>Username</h3>
+      <p class="hint">What {{ target.username }} logs in with. Must be unique across the whole system, not just your business.</p>
+      <input type="text" name="username" value="{{ target.username }}" required
+             style="width:100%;padding:.6rem .75rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">
+    </div>
 
     <div class="ue-section">
       <h3>Module Access</h3>
