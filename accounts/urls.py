@@ -10,6 +10,8 @@ urlpatterns = [
     path("users/", views.user_list, name="user_list"),
     path("users/new/", views.user_create, name="user_create"),
     path("users/<int:pk>/edit/", views.user_edit, name="user_edit"),
+    path("notes/", views.notes_list, name="notes"),
+    path("notes/<int:pk>/delete/", views.note_delete, name="note_delete"),
     path("password/", auth_views.PasswordChangeView.as_view(
         template_name="registration/password_change.html",
         success_url=reverse_lazy("password_change_done"),

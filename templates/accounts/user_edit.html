@@ -93,6 +93,16 @@
       </div>
     </div>
 
+    <div class="ue-section">
+      <h3>Reset Password</h3>
+      <p class="hint">Leave blank to keep their current password. If you set one, write it down before you leave this page — <a href="{% url 'notes' %}" target="_blank" style="color:var(--ternah-blue);font-weight:600">your Notes</a> are a good place — it can't be looked up again afterward.</p>
+      <div style="display:flex;gap:.5rem">
+        <input type="text" name="new_password" id="newPassword" placeholder="New password" autocomplete="off"
+               style="flex:1;padding:.6rem .75rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">
+        <button type="button" class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);flex-shrink:0" onclick="generatePassword()">Generate</button>
+      </div>
+    </div>
+
     <div class="ue-danger">
       <h3>Danger Zone</h3>
       <p class="hint">Deactivating blocks this account from logging in — it doesn't delete anything they've done.</p>
@@ -112,10 +122,23 @@
 
 {% block scripts %}
 <script>
+function generatePassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  let pw = "";
+  for (let i = 0; i < 10; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+  const field = document.getElementById("newPassword");
+  field.value = pw;
+  field.focus();
+  field.select();
+}
 function confirmUserEdit() {
   const box = document.getElementById("isActiveBox");
   if (box.dataset.wasActive === "1" && !box.checked) {
     return confirm("Deactivate {{ target.username|escapejs }}? They will no longer be able to log in.");
+  }
+  const newPassword = document.getElementById("newPassword").value.trim();
+  if (newPassword) {
+    return confirm("Reset {{ target.username|escapejs }}'s password? Their current password stops working immediately — make sure you've written the new one down.");
   }
   return true;
 }

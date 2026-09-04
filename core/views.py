@@ -1,7 +1,7 @@
 """Branch management — owner only. A business's branches are the spine
 everything else (users, inventory, sales) hangs off."""
 from django.contrib.auth.decorators import user_passes_test
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 
 from sales.models import InventoryLocation
 from .models import Branch
@@ -47,3 +47,22 @@ def branch_create(request):
         )
         return redirect("core:branches")
     return render(request, "core/branch_create.html")
+
+
+@owner_required
+def branch_edit(request, pk):
+    """Name and address only — not type. Factory vs Outlet decides which
+    kind of inventory location got created alongside it, so changing that
+    after the fact would leave the branch's stock setup inconsistent;
+    fixing a typo in the name doesn't need that risk."""
+    biz = request.user.business
+    branch = get_object_or_404(Branch, pk=pk, business=biz)
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        if name:
+            branch.name = name
+            branch.address = request.POST.get("address", "").strip()
+            branch.save(update_fields=["name", "address"])
+            return redirect("core:branches")
+        return render(request, "core/branch_edit.html", {"branch": branch, "error": "Branch name is required."})
+    return render(request, "core/branch_edit.html", {"branch": branch})

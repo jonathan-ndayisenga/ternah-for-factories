@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Notes{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Notes</h2>
+</div>
+
+<div class="card" style="max-width:640px;margin-bottom:1rem">
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.75rem">Private to you — nobody else on your team sees these, not even another owner or manager. A good place to save a password the moment you reset one for someone, since it can't be looked up again afterward.</p>
+  <form method="post" class="stack">
+    {% csrf_token %}
+    <label>Title <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input name="title" placeholder="e.g. cashier.kampala's new password">
+    <label>Note</label>
+    <textarea name="body" rows="3" required></textarea>
+    <button class="btn" style="margin-top:.8rem">Save note</button>
+  </form>
+</div>
+
+<div class="grid cards-4">
+  {% for n in notes %}
+  <div class="card">
+    {% if n.title %}<h3 style="text-transform:none;font-size:.95rem;color:var(--ternah-navy);letter-spacing:0;margin-bottom:.4rem">{{ n.title }}</h3>{% endif %}
+    <p style="white-space:pre-wrap;font-size:.9rem;margin-bottom:.6rem">{{ n.body }}</p>
+    <p style="color:var(--muted);font-size:.75rem;margin-bottom:.6rem">{{ n.updated_at|date:"d M Y, H:i" }}</p>
+    <form method="post" action="{% url 'note_delete' n.pk %}" onsubmit="return confirm('Delete this note? This can\'t be undone.')">
+      {% csrf_token %}
+      <button class="btn ghost" style="background:#FDECEA;color:var(--red);padding:.4rem .7rem;min-height:auto;width:100%">Delete</button>
+    </form>
+  </div>
+  {% empty %}
+  <p style="color:var(--muted)">No notes yet.</p>
+  {% endfor %}
+</div>
+{% endblock %}

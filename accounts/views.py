@@ -1,3 +1,4 @@
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -6,7 +7,7 @@ from core.models import Branch
 from platformadmin.models import Module
 from sales.models import InventoryLocation
 from .middleware import MANAGER_SECTIONS, OWNER_SECTIONS
-from .models import PRICE_TIERS, User
+from .models import PRICE_TIERS, Note, User
 
 
 @login_required
@@ -199,8 +200,40 @@ def user_edit(request, pk):
             target.allowed_tiers = request.POST.getlist("allowed_tiers")
         target.save()
         target.modules.set(available_modules.filter(id__in=request.POST.getlist("modules")))
+
+        new_password = request.POST.get("new_password", "").strip()
+        if new_password:
+            target.set_password(new_password)
+            target.save(update_fields=["password"])
+            messages.success(request, f"Password reset for {target.username}. Write it down now — "
+                                      f"it can't be looked up again once you leave this page. "
+                                      f"Your Notes page is a good place to keep it.")
         return redirect("user_list")
 
     return render(request, "accounts/user_edit.html", {
         "target": target, "available_modules": available_modules, "tier_choices": PRICE_TIERS,
     })
+
+
+@login_required
+@can_manage_users
+def notes_list(request):
+    """A private scratchpad — never shared, not even with another owner or
+    manager at the same business. The obvious use: the moment you reset
+    someone's password (see user_edit above), write it here — Django never
+    stores it anywhere you could look back up."""
+    if request.method == "POST":
+        body = request.POST.get("body", "").strip()
+        if body:
+            Note.objects.create(user=request.user, title=request.POST.get("title", "").strip(), body=body)
+        return redirect("notes")
+    return render(request, "accounts/notes.html", {"notes": request.user.notes.all()})
+
+
+@login_required
+@can_manage_users
+def note_delete(request, pk):
+    note = get_object_or_404(Note, pk=pk, user=request.user)
+    if request.method == "POST":
+        note.delete()
+    return redirect("notes")

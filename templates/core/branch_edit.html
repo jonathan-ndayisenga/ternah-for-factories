@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ branch.name }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:520px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Edit Branch</h2>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Fix a typo or update the address — the branch type can't be changed here since it decides how this branch's inventory was set up.</p>
+  {% if error %}<p style="color:var(--red);font-weight:600;font-size:.9rem;margin-bottom:.5rem">{{ error }}</p>{% endif %}
+  <form method="post" class="stack">{% csrf_token %}
+    <label>Branch name</label>
+    <input name="name" value="{{ branch.name }}" required>
+    <label>Type</label>
+    <input value="{{ branch.get_kind_display }}" disabled style="background:var(--bg);color:var(--muted)">
+    <label>Address</label>
+    <textarea name="address" rows="2">{{ branch.address }}</textarea>
+    <button class="btn" style="margin-top:1.2rem">Save changes</button>
+  </form>
+</div>
+{% endblock %}

@@ -51,3 +51,18 @@ class User(AbstractUser):
 VIEWS = ["MANAGER", "CASHIER", "PRODUCTION", "SALES_REP"]
 PRICE_TIERS = [("RETAIL", "Retail"), ("WHOLESALE", "Wholesale"),
                ("DISTRIBUTION", "Distribution"), ("CUSTOM", "Custom")]
+
+
+class Note(models.Model):
+    """A private scratchpad, per user — not shared with anyone else, even
+    another owner/manager at the same business. Built for jotting down a
+    password the moment you reset one for someone else, since Django never
+    stores it in a form you could look back up."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notes")
+    title = models.CharField(max_length=120, blank=True)
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
