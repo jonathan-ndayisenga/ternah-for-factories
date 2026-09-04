@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from finance.models import Supplier, SupplierPayable
-from finance.services import post_batch_completion, post_raw_material_purchase
+from finance.services import post_batch_completion, post_raw_material_purchase, reverse_raw_material_purchase
 from sales.models import InventoryLocation, StockItem, StockMovement, StockRequest
 from .models import (
     Category, Dispensation, Distribution, DistributionLine, FormulaLine, Product, ProductFormula,
@@ -470,12 +470,24 @@ def raw_material_purchase(request, pk):
 
         supplier = None
         supplier_name = request.POST.get("supplier", "").strip()
+        supplier_phone = request.POST.get("supplier_phone", "").strip()
         if supplier_name:
             supplier, _ = Supplier.objects.get_or_create(business=biz, name=supplier_name)
+            if supplier_phone and supplier_phone != supplier.phone:
+                supplier.phone = supplier_phone
+                supplier.save(update_fields=["phone"])
         on_credit = "on_credit" in request.POST
         if on_credit and not supplier:
             messages.error(request, "Buying on credit needs a supplier name — that's who the payable is filed against.")
             return redirect("production:raw_material_purchase", pk=material.pk)
+
+        amount_paid_now = Decimal("0")
+        if on_credit:
+            try:
+                amount_paid_now = Decimal(request.POST.get("amount_paid_now") or "0")
+            except InvalidOperation:
+                amount_paid_now = Decimal("0")
+            amount_paid_now = max(Decimal("0"), min(amount_paid_now, total_cost))
 
         purchase = RawMaterialPurchase.objects.create(
             raw_material=material, quantity=quantity, total_cost=total_cost,
@@ -486,20 +498,62 @@ def raw_material_purchase(request, pk):
             country_of_origin=request.POST.get("country_of_origin", "").strip(),
             supplier=supplier, on_credit=on_credit, recorded_by=request.user,
         )
-        if on_credit and supplier:
+        if on_credit and supplier and amount_paid_now < total_cost:
             SupplierPayable.objects.create(
                 supplier=supplier,
                 description=f"{material.name} — {purchase.batch_number or purchase.purchase_date}",
-                total_amount=total_cost, status="OPEN",
+                total_amount=total_cost, amount_paid=amount_paid_now, status="OPEN",
             )
-        post_raw_material_purchase(purchase)
-        messages.success(request, f"Purchase recorded: {quantity} {material.unit_of_measure} of {material.name} "
-                                  f"for UGX {total_cost:,.0f}"
-                                  + (f" on credit from {supplier.name}." if on_credit else " — paid in cash.")
-                                  + " It's posted to the books and will show in the Cashbook/Activity.")
+        post_raw_material_purchase(purchase, amount_paid_now)
+
+        msg = f"Purchase recorded: {quantity} {material.unit_of_measure} of {material.name} for UGX {total_cost:,.0f}"
+        if on_credit and amount_paid_now >= total_cost:
+            msg += f" — fully paid to {supplier.name} today, no payable filed."
+        elif on_credit and amount_paid_now > 0:
+            msg += (f" — UGX {amount_paid_now:,.0f} paid now, UGX {total_cost - amount_paid_now:,.0f} "
+                   f"still owed to {supplier.name}.")
+        elif on_credit:
+            msg += f" on credit from {supplier.name} — nothing paid yet."
+        else:
+            msg += " — paid in cash."
+        messages.success(request, msg + " It's posted to the books and will show in the Cashbook/Activity.")
         return redirect("production:raw_materials")
 
     return render(request, "production/raw_material_purchase.html", {"material": material})
+
+
+@production_staff_required
+def raw_material_purchase_reverse(request, pk):
+    """Undo a data-entry mistake — a wrong price, a fat-fingered quantity —
+    rather than editing the original record. Only possible while nothing
+    has been dispensed from it yet (remaining_quantity == quantity); once
+    any of it has gone into a batch, this stops being a clean undo and
+    needs a deliberate correction instead, so it's blocked outright rather
+    than doing something half-right."""
+    biz = request.user.business
+    purchase = get_object_or_404(RawMaterialPurchase, pk=pk, raw_material__business=biz)
+    if request.method == "POST":
+        if purchase.is_reversed:
+            messages.error(request, "This purchase was already reversed.")
+        elif purchase.remaining_quantity != purchase.quantity:
+            messages.error(request, f"Can't reverse this purchase — {purchase.quantity - purchase.remaining_quantity} "
+                                    f"{purchase.raw_material.unit_of_measure} of it has already been dispensed into a "
+                                    f"batch. Reversal only works while none of it has been used yet.")
+        else:
+            reverse_raw_material_purchase(purchase, actor=request.user)
+            if purchase.on_credit and purchase.supplier:
+                SupplierPayable.objects.filter(
+                    supplier=purchase.supplier,
+                    description=f"{purchase.raw_material.name} — {purchase.batch_number or purchase.purchase_date}",
+                    status="OPEN",
+                ).delete()
+            purchase.is_reversed = True
+            purchase.remaining_quantity = 0
+            purchase.save(update_fields=["is_reversed", "remaining_quantity"])
+            messages.success(request, f"Reversed: {purchase.quantity} {purchase.raw_material.unit_of_measure} of "
+                                      f"{purchase.raw_material.name} for UGX {purchase.total_cost:,.0f}. "
+                                      f"A correcting entry was posted to the books — now record the correct purchase.")
+    return redirect("production:raw_material_movements", pk=purchase.raw_material_id)
 
 
 @production_staff_required
@@ -508,10 +562,11 @@ def raw_material_movements(request, pk):
     entries = []
     for p in material.purchases.all():
         entries.append({"date": p.purchase_date, "type": "Purchase", "change": p.quantity,
-                        "ref": p.batch_number or "—"})
+                        "ref": p.batch_number or "—", "purchase": p,
+                        "can_reverse": not p.is_reversed and p.remaining_quantity == p.quantity})
     for d in material.dispensation_set.select_related("batch"):
         entries.append({"date": d.batch.date, "type": "Dispensed", "change": -d.quantity_dispensed,
-                        "ref": d.batch.batch_number})
+                        "ref": d.batch.batch_number, "purchase": None, "can_reverse": False})
     entries.sort(key=lambda e: e["date"], reverse=True)
     return render(request, "production/raw_material_movements.html", {"material": material, "entries": entries})
 

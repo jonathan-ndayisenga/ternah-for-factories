@@ -25,10 +25,16 @@
     <input name="country_of_origin">
     <label>Supplier <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
     <input name="supplier" placeholder="Supplier name">
+    <label>Supplier phone <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input name="supplier_phone" type="tel" placeholder="e.g. 0772 123456">
 
     <label style="display:flex;align-items:center;gap:.5rem;width:auto;margin-top:1rem;text-transform:none;letter-spacing:0;font-weight:600;font-size:.9rem">
-      <input type="checkbox" name="on_credit" style="width:auto">Bought on credit — file a supplier payable
+      <input type="checkbox" name="on_credit" id="onCredit" style="width:auto" onchange="toggleAmountPaid()">Bought on credit — file a supplier payable
     </label>
+    <div id="amountPaidField" style="display:none">
+      <label>Amount paid now (UGX) <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional — leave 0 if nothing's been paid yet)</span></label>
+      <input name="amount_paid_now" type="number" step="0.01" min="0" value="0">
+    </div>
 
     <button class="btn" style="margin-top:1.2rem">Record purchase</button>
   </form>
@@ -37,14 +43,25 @@
 
 {% block scripts %}
 <script>
+function toggleAmountPaid() {
+  document.getElementById("amountPaidField").style.display = document.getElementById("onCredit").checked ? "block" : "none";
+}
 function confirmPurchase() {
   const qty = document.getElementById("qty").value;
   const total = document.getElementById("totalCost").value;
-  const onCredit = document.querySelector('input[name="on_credit"]').checked;
-  const money = onCredit
-    ? `UGX ${total} on credit — this files a supplier payable`
-    : `UGX ${total} paid in cash — this reduces Cash on Hand`;
-  return confirm(`Record this purchase?\n\n${qty} {{ material.unit_of_measure|escapejs }} of {{ material.name|escapejs }}\n${money}\n\nThis posts straight to the books and can't be edited afterward — only reversed by a correcting entry.`);
+  const onCredit = document.getElementById("onCredit").checked;
+  const paidNow = parseFloat(document.querySelector('input[name="amount_paid_now"]').value) || 0;
+  let money;
+  if (!onCredit) {
+    money = `UGX ${total} paid in cash — this reduces Cash on Hand`;
+  } else if (paidNow >= parseFloat(total)) {
+    money = `UGX ${total} on credit, but fully paid today — no payable filed`;
+  } else if (paidNow > 0) {
+    money = `UGX ${paidNow} paid now, the rest (UGX ${(parseFloat(total) - paidNow).toFixed(2)}) filed as a supplier payable`;
+  } else {
+    money = `UGX ${total} on credit — this files a supplier payable, nothing paid yet`;
+  }
+  return confirm(`Record this purchase?\n\n${qty} {{ material.unit_of_measure|escapejs }} of {{ material.name|escapejs }}\n${money}\n\nThis posts straight to the books. If you made a mistake, it can be reversed afterward from Movements — not edited in place.`);
 }
 function updateUnitCost() {
   const qty = parseFloat(document.getElementById("qty").value);

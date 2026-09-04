@@ -8,17 +8,29 @@
 </div>
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Date</th><th>Type</th><th>Change</th><th>Reference</th></tr>
+  <tr><th>Date</th><th>Type</th><th>Change</th><th>Reference</th><th></th></tr>
   {% for e in entries %}
-  <tr>
+  <tr{% if e.purchase.is_reversed %} style="opacity:.5"{% endif %}>
     <td>{{ e.date|date:"d M Y" }}</td>
-    <td>{{ e.type }}</td>
+    <td>
+      {{ e.type }}
+      {% if e.purchase.is_reversed %}<span class="pill locked" style="margin-left:.4rem">Reversed</span>{% endif %}
+    </td>
     <td style="color:{% if e.change < 0 %}var(--red){% else %}var(--green){% endif %};font-weight:700">
       {% if e.change > 0 %}+{% endif %}{{ e.change|floatformat:3 }} {{ material.unit_of_measure }}
     </td>
-    <td>{{ e.ref }}</td>
+    <td>{{ e.ref }}{% if e.purchase.supplier %} <span style="color:var(--muted)">— {{ e.purchase.supplier.name }}</span>{% endif %}</td>
+    <td>
+      {% if e.can_reverse %}
+      <form method="post" action="{% url 'production:raw_material_purchase_reverse' e.purchase.pk %}"
+            onsubmit="return confirm('Reverse this purchase? {{ e.purchase.quantity }} {{ material.unit_of_measure|escapejs }} of {{ material.name|escapejs }} for UGX {{ e.purchase.total_cost|floatformat:0 }} will be removed from stock, a correcting entry posted to the books, and any supplier payable for it cancelled. This only works because none of it has been dispensed yet. Record the correct purchase afterward.')">
+        {% csrf_token %}
+        <button class="btn ghost" style="background:#FDECEA;color:var(--red);padding:.4rem .7rem;min-height:auto">Reverse</button>
+      </form>
+      {% endif %}
+    </td>
   </tr>
-  {% empty %}<tr><td colspan="4" style="color:var(--muted)">No movements recorded yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="5" style="color:var(--muted)">No movements recorded yet.</td></tr>{% endfor %}
 </table>
 </div>
 {% endblock %}

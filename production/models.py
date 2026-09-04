@@ -26,7 +26,7 @@ class RawMaterial(TimeStamped):
         return self.purchases.aggregate(s=models.Sum("remaining_quantity"))["s"] or Decimal("0")
 
     def latest_unit_cost(self):
-        p = self.purchases.order_by("-purchase_date").first()
+        p = self.purchases.exclude(is_reversed=True).order_by("-purchase_date").first()
         return p.unit_cost if p else Decimal("0")
 
     def __str__(self):
@@ -48,6 +48,7 @@ class RawMaterialPurchase(TimeStamped):
     supplier = models.ForeignKey("finance.Supplier", null=True, blank=True, on_delete=models.SET_NULL)
     on_credit = models.BooleanField(default=False)   # True -> creates a SupplierPayable
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    is_reversed = models.BooleanField(default=False)   # a data-entry error, corrected by reversal + a fresh purchase
 
     def save(self, *args, **kwargs):
         self.unit_cost = (self.total_cost / self.quantity).quantize(Decimal("0.0001"))

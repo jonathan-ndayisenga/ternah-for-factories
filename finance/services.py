@@ -136,13 +136,39 @@ def post_outlet_transfer_expense(expense):
                 actor=expense.recorded_by)
 
 
-def post_raw_material_purchase(purchase):
+def post_raw_material_purchase(purchase, amount_paid_now=Decimal("0")):
+    """On credit doesn't have to mean nothing paid — amount_paid_now splits
+    the credit side between Cash (whatever went out today) and Accounts
+    Payable (the rest, if any). Fully paid despite being flagged on_credit
+    just collapses to a normal cash purchase."""
     business = purchase.raw_material.business
     accounts = get_accounts(business)
-    credit_account = accounts["2000"] if purchase.on_credit else accounts["1000"]
     memo = f"{purchase.raw_material.name} — {purchase.batch_number or purchase.purchase_date}"
-    return _post(business, None, purchase.purchase_date, "RM_PURCHASE", f"rm_purchase:{purchase.pk}", memo,
-                [(accounts["1200"], purchase.total_cost, 0), (credit_account, 0, purchase.total_cost)])
+    lines = [(accounts["1200"], purchase.total_cost, 0)]
+    if purchase.on_credit and amount_paid_now < purchase.total_cost:
+        remaining = purchase.total_cost - amount_paid_now
+        if amount_paid_now > 0:
+            lines.append((accounts["1000"], 0, amount_paid_now))
+        lines.append((accounts["2000"], 0, remaining))
+    else:
+        lines.append((accounts["1000"], 0, purchase.total_cost))
+    return _post(business, None, purchase.purchase_date, "RM_PURCHASE", f"rm_purchase:{purchase.pk}", memo, lines)
+
+
+def reverse_raw_material_purchase(purchase, actor=None):
+    """A mechanical reversal — flip every debit/credit line of the original
+    entry, so it's correct regardless of how that entry was actually shaped
+    (straight cash, straight credit, or a split payment). Matches this
+    ledger's own rule: corrections are reversals, nothing already posted is
+    ever edited or deleted."""
+    original = JournalEntry.objects.filter(business=purchase.raw_material.business,
+                                           source_ref=f"rm_purchase:{purchase.pk}").prefetch_related("lines").first()
+    if not original:
+        return None
+    memo = f"Reversal — {purchase.raw_material.name} — {purchase.batch_number or purchase.purchase_date}"
+    lines = [(l.ledger_account, l.credit, l.debit) for l in original.lines.all()]
+    return _post(purchase.raw_material.business, None, timezone.now().date(), "REVERSAL",
+                f"reversal:rm_purchase:{purchase.pk}", memo, lines, actor=actor)
 
 
 def post_capital_transaction(business, date, amount, into, memo, actor):

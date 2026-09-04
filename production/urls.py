@@ -21,6 +21,7 @@ urlpatterns = [
     path("raw-materials/<int:pk>/toggle-active/", views.raw_material_toggle_active, name="raw_material_toggle_active"),
     path("raw-materials/<int:pk>/purchase/", views.raw_material_purchase, name="raw_material_purchase"),
     path("raw-materials/<int:pk>/movements/", views.raw_material_movements, name="raw_material_movements"),
+    path("raw-material-purchases/<int:pk>/reverse/", views.raw_material_purchase_reverse, name="raw_material_purchase_reverse"),
     path("batches/new/", views.batch_create, name="batch_create"),
     path("batches/processing/", views.processing_list, name="processing"),
     path("batches/<int:pk>/complete/", views.batch_complete, name="batch_complete"),
