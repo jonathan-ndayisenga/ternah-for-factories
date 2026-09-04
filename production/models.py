@@ -20,6 +20,7 @@ class RawMaterial(TimeStamped):
     # "sachet", "dozen") and it's saved as-is.
     unit_of_measure = models.CharField(max_length=20)
     reorder_level = models.DecimalField(max_digits=12, decimal_places=3, default=0)
+    is_active = models.BooleanField(default=True)   # soft delete — purchases/formula lines keep pointing at it
 
     def current_stock(self):
         return self.purchases.aggregate(s=models.Sum("remaining_quantity"))["s"] or Decimal("0")

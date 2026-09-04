@@ -369,6 +369,45 @@ def raw_material_create(request):
 
 
 @production_staff_required
+def raw_material_edit(request, pk):
+    biz = request.user.business
+    material = get_object_or_404(RawMaterial, pk=pk, business=biz)
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        uom = request.POST.get("unit_of_measure", "").strip()
+        try:
+            reorder = Decimal(request.POST.get("reorder_level") or "0")
+        except InvalidOperation:
+            reorder = material.reorder_level
+        if name and uom:
+            material.name = name
+            material.unit_of_measure = uom
+            material.reorder_level = reorder
+            material.save(update_fields=["name", "unit_of_measure", "reorder_level"])
+            return redirect("production:raw_materials")
+        return render(request, "production/raw_material_edit.html", {
+            "material": material, "uom_suggestions": UOM_SUGGESTIONS, "error": "Name and unit are both required.",
+        })
+    return render(request, "production/raw_material_edit.html", {
+        "material": material, "uom_suggestions": UOM_SUGGESTIONS,
+    })
+
+
+@production_staff_required
+def raw_material_toggle_active(request, pk):
+    """Soft delete — purchases, dispensations and formula lines all still
+    point at this material (two of them PROTECT against a real delete
+    anyway), so 'removing' one that's ever been used just hides it from new
+    purchases/formulas going forward rather than losing its history."""
+    biz = request.user.business
+    material = get_object_or_404(RawMaterial, pk=pk, business=biz)
+    if request.method == "POST":
+        material.is_active = not material.is_active
+        material.save(update_fields=["is_active"])
+    return redirect("production:raw_materials")
+
+
+@production_staff_required
 def raw_material_purchase(request, pk):
     biz = request.user.business
     material = get_object_or_404(RawMaterial, pk=pk, business=biz)

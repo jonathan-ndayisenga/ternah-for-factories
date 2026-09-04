@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ material.name }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:0 auto">
+  <h2 style="color:var(--ternah-navy);margin-bottom:.5rem">Edit Raw Material</h2>
+  {% if error %}<p style="color:var(--red);font-weight:600;font-size:.9rem;margin-bottom:.5rem">{{ error }}</p>{% endif %}
+  <form method="post" class="stack">
+    {% csrf_token %}
+    <label>Name</label>
+    <input name="name" value="{{ material.name }}" required placeholder="e.g. Petroleum Jelly Base">
+    <label>Unit of measure <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(pick a suggestion or type your own — e.g. "roll", "sachet")</span></label>
+    <input name="unit_of_measure" value="{{ material.unit_of_measure }}" list="uomList" required placeholder="e.g. kg, ml, pcs...">
+    <datalist id="uomList">
+      {% for u in uom_suggestions %}<option value="{{ u }}">{% endfor %}
+    </datalist>
+    <label>Reorder level</label>
+    <input name="reorder_level" type="number" step="0.001" min="0" value="{{ material.reorder_level|stringformat:'s' }}">
+    <button class="btn" style="margin-top:1.2rem">Save changes</button>
+  </form>
+</div>
+{% endblock %}
