@@ -1,13 +1,23 @@
 {% extends "base.html" %}
 {% block title %}{{ invoice.number }}{% endblock %}
 {% block content %}
-<div class="page-head">
+<div class="page-head no-print">
   <h2>{% if invoice.direction == "AR" %}Invoice{% else %}Bill{% endif %} {{ invoice.number }}</h2>
   <span class="spacer"></span>
   {% if invoice.is_void %}<span class="pill locked">Void</span>
   {% elif invoice.amount_paid <= 0 %}<span class="pill locked">Unpaid</span>
   {% elif invoice.balance > 0 %}<span class="pill warning">Partially paid</span>
   {% else %}<span class="pill active">Paid</span>{% endif %}
+  <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
+</div>
+
+{% include "partials/print_letterhead.html" with print_title=print_title %}
+
+<div class="print-only" style="text-align:right;margin-bottom:1rem;font-weight:700">
+  {% if invoice.is_void %}Status: VOID
+  {% elif invoice.amount_paid <= 0 %}Status: UNPAID
+  {% elif invoice.balance > 0 %}Status: PARTIALLY PAID
+  {% else %}Status: PAID{% endif %}
 </div>
 
 <div class="grid charts-2" style="margin-bottom:1rem">
@@ -16,6 +26,13 @@
     <table class="list" style="border:none">
       <tr><td style="color:var(--muted)">{% if invoice.direction == "AR" %}Client{% else %}Supplier{% endif %}</td>
           <td><strong>{% if invoice.client %}{{ invoice.client.name }}{% elif invoice.supplier %}{{ invoice.supplier.name }}{% else %}—{% endif %}</strong></td></tr>
+      {% if invoice.client %}
+      {% if invoice.client.address %}<tr><td style="color:var(--muted)">Address</td><td>{{ invoice.client.address }}</td></tr>{% endif %}
+      {% if invoice.client.phone %}<tr><td style="color:var(--muted)">Phone</td><td>{{ invoice.client.phone }}</td></tr>{% endif %}
+      {% if invoice.client.tin %}<tr><td style="color:var(--muted)">TIN</td><td>{{ invoice.client.tin }}</td></tr>{% endif %}
+      {% elif invoice.supplier and invoice.supplier.phone %}
+      <tr><td style="color:var(--muted)">Phone</td><td>{{ invoice.supplier.phone }}</td></tr>
+      {% endif %}
       <tr><td style="color:var(--muted)">Issue date</td><td>{{ invoice.issue_date|date:"d M Y" }}</td></tr>
       <tr><td style="color:var(--muted)">Due date</td><td>{{ invoice.due_date|date:"d M Y"|default:"—" }}</td></tr>
       <tr><td style="color:var(--muted)">Raised by</td><td>{{ invoice.created_by.username|default:"—" }}</td></tr>
@@ -58,7 +75,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card no-print">
     {% if not invoice.is_void and invoice.balance > 0 %}
     <h3>Record a payment</h3>
     <form method="post" action="{% url 'finance:invoice_payment' invoice.pk %}" class="stack"
@@ -87,4 +104,6 @@
     {% endif %}
   </div>
 </div>
+
+{% include "partials/print_footer.html" %}
 {% endblock %}
