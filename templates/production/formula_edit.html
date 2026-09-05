@@ -51,26 +51,46 @@
 {% else %}
 <div class="card">
   <h3>{% if current %}Editing draft — version {{ current.version }}{% else %}New formula{% endif %}</h3>
+  <p class="hint" style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">
+    Bought in kg or L but formulating in g or mL? Use the unit dropdown next to the quantity — it converts for
+    you, the recipe is still stored in the material's own unit underneath.
+  </p>
+  <style>
+    .fl-row { border:1px solid #E4E9EF; border-radius:10px; padding:.6rem .7rem; margin-bottom:.6rem; background:#FAFBFC; }
+    .fl-search { width:100%; margin-bottom:.5rem; padding:.5rem .7rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; font-size:.85rem; box-sizing:border-box; }
+    .fl-controls { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+    .fl-material { flex:2 1 240px; min-width:220px; padding:.55rem .6rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; }
+    .fl-qty { flex:0 0 110px; width:110px; padding:.55rem .6rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; }
+    .fl-unit { flex:0 0 90px; padding:.55rem .5rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; }
+  </style>
   <form method="post" id="formulaForm">
     {% csrf_token %}
     <input type="hidden" name="action" value="save" id="formAction">
     <div id="lineRows">
       {% for line in lines %}
-      <div class="cart-row">
-        <select name="raw_material" class="fl-material" onchange="recompute()">
-          {% for m in materials %}<option value="{{ m.pk }}" data-cost="{{ m.latest_unit_cost }}" {% if m.pk == line.raw_material.pk %}selected{% endif %}>{{ m.name }} ({{ m.unit_of_measure }})</option>{% endfor %}
-        </select>
-        <input type="number" step="0.0001" min="0.0001" name="quantity_per_unit" class="fl-qty" value="{{ line.quantity_per_unit }}" oninput="recompute()">
-        <button type="button" class="btn ghost row-remove" onclick="removeLine(this)">&times;</button>
+      <div class="fl-row">
+        <input type="text" class="fl-search" placeholder="Search raw material…" oninput="filterMaterialOptions(this)">
+        <div class="fl-controls">
+          <select name="raw_material" class="fl-material" onchange="onMaterialChange(this)">
+            {% for m in materials %}<option value="{{ m.pk }}" data-cost="{{ m.latest_unit_cost }}" data-unit="{{ m.unit_of_measure }}" {% if m.pk == line.raw_material.pk %}selected{% endif %}>{{ m.name }} ({{ m.unit_of_measure }})</option>{% endfor %}
+          </select>
+          <input type="number" step="0.0001" min="0.0001" name="quantity_per_unit" class="fl-qty" value="{{ line.quantity_per_unit }}" oninput="onQtyInput(this)">
+          <select class="fl-unit" style="display:none" onchange="onUnitToggle(this)"></select>
+          <button type="button" class="btn ghost row-remove" onclick="removeLine(this)">&times;</button>
+        </div>
       </div>
       {% empty %}
-      <div class="cart-row">
-        <select name="raw_material" class="fl-material" onchange="recompute()">
-          <option value="">Select material…</option>
-          {% for m in materials %}<option value="{{ m.pk }}" data-cost="{{ m.latest_unit_cost }}">{{ m.name }} ({{ m.unit_of_measure }})</option>{% endfor %}
-        </select>
-        <input type="number" step="0.0001" min="0.0001" name="quantity_per_unit" class="fl-qty" value="1" oninput="recompute()">
-        <button type="button" class="btn ghost row-remove" onclick="removeLine(this)">&times;</button>
+      <div class="fl-row">
+        <input type="text" class="fl-search" placeholder="Search raw material…" oninput="filterMaterialOptions(this)">
+        <div class="fl-controls">
+          <select name="raw_material" class="fl-material" onchange="onMaterialChange(this)">
+            <option value="">Select material…</option>
+            {% for m in materials %}<option value="{{ m.pk }}" data-cost="{{ m.latest_unit_cost }}" data-unit="{{ m.unit_of_measure }}">{{ m.name }} ({{ m.unit_of_measure }})</option>{% endfor %}
+          </select>
+          <input type="number" step="0.0001" min="0.0001" name="quantity_per_unit" class="fl-qty" value="1" oninput="onQtyInput(this)">
+          <select class="fl-unit" style="display:none" onchange="onUnitToggle(this)"></select>
+          <button type="button" class="btn ghost row-remove" onclick="removeLine(this)">&times;</button>
+        </div>
       </div>
       {% endfor %}
     </div>
@@ -108,30 +128,102 @@
 
 {% block scripts %}
 <script>
+const UNIT_PAIRS = {
+  "kg": { small: "g", factor: 1000 },
+  "l": { small: "ml", factor: 1000 },
+  "litre": { small: "ml", factor: 1000 },
+  "liter": { small: "ml", factor: 1000 },
+};
+function normUnit(u) { return (u || "").trim().toLowerCase(); }
+function pairFor(unit) { return UNIT_PAIRS[normUnit(unit)] || null; }
+
+function setupUnitToggle(row, forceMode) {
+  const materialSel = row.querySelector(".fl-material");
+  const unitSel = row.querySelector(".fl-unit");
+  const opt = materialSel.selectedOptions[0];
+  const baseUnit = opt ? (opt.dataset.unit || "") : "";
+  const pair = pairFor(baseUnit);
+  if (!pair) {
+    unitSel.style.display = "none";
+    unitSel.innerHTML = "";
+    row.dataset.unitMode = "base";
+    return;
+  }
+  unitSel.innerHTML = `<option value="base">${baseUnit}</option><option value="small">${pair.small}</option>`;
+  unitSel.style.display = "";
+  unitSel.value = forceMode || row.dataset.unitMode || "base";
+  row.dataset.unitMode = unitSel.value;
+}
+function onMaterialChange(sel) {
+  const row = sel.closest(".fl-row");
+  const qtyInput = row.querySelector(".fl-qty");
+  qtyInput.value = effectiveBaseQty(row);
+  setupUnitToggle(row, "base");
+  recompute();
+}
+function onUnitToggle(unitSel) {
+  const row = unitSel.closest(".fl-row");
+  const qtyInput = row.querySelector(".fl-qty");
+  const opt = row.querySelector(".fl-material").selectedOptions[0];
+  const pair = pairFor(opt ? opt.dataset.unit : "");
+  const qty = parseFloat(qtyInput.value) || 0;
+  const prevMode = row.dataset.unitMode || "base";
+  const newMode = unitSel.value;
+  if (pair && prevMode !== newMode) {
+    qtyInput.value = newMode === "small" ? +(qty * pair.factor).toPrecision(10) : +(qty / pair.factor).toPrecision(10);
+  }
+  row.dataset.unitMode = newMode;
+  recompute();
+}
+function onQtyInput() { recompute(); }
+function effectiveBaseQty(row) {
+  const qty = parseFloat(row.querySelector(".fl-qty").value) || 0;
+  const opt = row.querySelector(".fl-material").selectedOptions[0];
+  const pair = pairFor(opt ? opt.dataset.unit : "");
+  const mode = row.dataset.unitMode || "base";
+  return (pair && mode === "small") ? qty / pair.factor : qty;
+}
 function recompute() {
   let total = 0;
-  document.querySelectorAll("#lineRows .cart-row").forEach(row => {
-    const sel = row.querySelector(".fl-material");
-    const qty = parseFloat(row.querySelector(".fl-qty").value) || 0;
-    const opt = sel.selectedOptions[0];
+  document.querySelectorAll("#lineRows .fl-row").forEach(row => {
+    const opt = row.querySelector(".fl-material").selectedOptions[0];
     const cost = opt ? (parseFloat(opt.dataset.cost) || 0) : 0;
-    total += qty * cost;
+    total += effectiveBaseQty(row) * cost;
   });
   const el = document.getElementById("costPreview");
   if (el) el.textContent = "UGX " + total.toFixed(4);
 }
+function filterMaterialOptions(input) {
+  const sel = input.closest(".fl-row").querySelector(".fl-material");
+  const q = input.value.trim().toLowerCase();
+  Array.from(sel.options).forEach(opt => {
+    opt.hidden = !!(opt.value && q && !opt.textContent.toLowerCase().includes(q));
+  });
+}
 function addLine() {
   const rows = document.getElementById("lineRows");
   const row = rows.firstElementChild.cloneNode(true);
+  row.querySelector(".fl-search").value = "";
+  Array.from(row.querySelectorAll(".fl-material option")).forEach(o => o.hidden = false);
   row.querySelector(".fl-material").selectedIndex = 0;
   row.querySelector(".fl-qty").value = "1";
   rows.appendChild(row);
+  setupUnitToggle(row, "base");
   recompute();
 }
 function removeLine(btn) {
   const rows = document.getElementById("lineRows");
-  if (rows.children.length > 1) { btn.closest(".cart-row").remove(); recompute(); }
+  if (rows.children.length > 1) { btn.closest(".fl-row").remove(); recompute(); }
 }
-document.addEventListener("DOMContentLoaded", recompute);
+function convertAllToBaseUnits() {
+  document.querySelectorAll("#lineRows .fl-row").forEach(row => {
+    row.querySelector(".fl-qty").value = effectiveBaseQty(row);
+  });
+}
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll("#lineRows .fl-row").forEach(row => setupUnitToggle(row, "base"));
+  recompute();
+  document.getElementById("formulaForm").addEventListener("submit", convertAllToBaseUnits);
+});
 </script>
 {% endblock %}

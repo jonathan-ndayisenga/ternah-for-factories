@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
+from django.core.paginator import Paginator
 from django.db.models import Count, F, ProtectedError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -66,11 +67,13 @@ def _cost_stats(product):
 @catalog_staff_required
 def product_list(request):
     biz = request.user.business
-    products = list(Product.objects.filter(business=biz).select_related("category").order_by("status", "name"))
-    for p in products:
+    products = Product.objects.filter(business=biz).select_related("category").order_by("status", "name")
+    awaiting_count = products.filter(status="DRAFT").count()
+    page_obj = Paginator(products, 25).get_page(request.GET.get("page"))
+    for p in page_obj:
         p.cost_stats = _cost_stats(p)
     return render(request, "production/products.html", {
-        "products": products, "awaiting_count": sum(1 for p in products if p.status == "DRAFT"),
+        "page_obj": page_obj, "awaiting_count": awaiting_count,
     })
 
 
@@ -389,12 +392,13 @@ def category_list(request):
 @production_staff_required
 def raw_material_list(request):
     biz = request.user.business
-    materials = list(RawMaterial.objects.filter(business=biz).order_by("name"))
-    for m in materials:
+    materials = RawMaterial.objects.filter(business=biz).order_by("name")
+    page_obj = Paginator(materials, 25).get_page(request.GET.get("page"))
+    for m in page_obj:
         m.stock = m.current_stock()
         m.cost = m.latest_unit_cost()
         m.low = m.stock <= m.reorder_level
-    return render(request, "production/raw_materials.html", {"materials": materials})
+    return render(request, "production/raw_materials.html", {"page_obj": page_obj})
 
 
 @production_staff_required

@@ -19,10 +19,11 @@
     <option value="ARCHIVED">Archived</option>
   </select>
 </div>
+{% if page_obj.paginator.num_pages > 1 %}<p style="color:var(--muted);font-size:.8rem;margin-top:-.6rem;margin-bottom:.8rem">Search only looks within the current page — use Next/Prev if you don't see what you're after.</p>{% endif %}
 <div class="table-scroll">
 <table class="list" id="prodTable">
   <tr><th>Product</th><th>Category</th><th>Status</th><th>Cost (latest)</th><th>Retail</th><th>Wholesale</th><th>Distribution</th><th>Custom</th><th></th><th></th><th></th></tr>
-  {% for p in products %}
+  {% for p in page_obj %}
   <tr{% if p.status == "ARCHIVED" %} style="opacity:.55"{% endif %}
       data-name="{{ p.name|lower }} {{ p.category.name|lower }} {{ p.sku|lower }}" data-status="{{ p.status }}">
     <td><strong>{{ p.name }}</strong>{% if p.pack_size %}<br><span style="color:var(--muted);font-size:.8rem">{{ p.pack_size }}</span>{% endif %}</td>
@@ -74,6 +75,7 @@
   <tr id="prodNoMatches" style="display:none"><td colspan="11" style="color:var(--muted)">No products match your search.</td></tr>
 </table>
 </div>
+{% include "partials/pagination.html" %}
 {% endblock %}
 
 {% block scripts %}

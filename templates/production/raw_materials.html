@@ -16,10 +16,11 @@
     <option value="inactive">Inactive</option>
   </select>
 </div>
+{% if page_obj.paginator.num_pages > 1 %}<p style="color:var(--muted);font-size:.8rem;margin-top:-.6rem;margin-bottom:.8rem">Search only looks within the current page — use Next/Prev if you don't see what you're after.</p>{% endif %}
 <div class="table-scroll">
 <table class="list" id="rmTable">
   <tr><th>Material</th><th>Unit</th><th>Stock on hand</th><th>Reorder level</th><th>Latest unit cost</th><th>Status</th><th></th></tr>
-  {% for m in materials %}
+  {% for m in page_obj %}
   <tr{% if not m.is_active %} style="opacity:.55"{% endif %} data-name="{{ m.name|lower }}"
       data-status="{% if not m.is_active %}inactive{% elif m.low %}reorder{% else %}active{% endif %}">
     <td><strong>{{ m.name }}</strong></td>
@@ -49,6 +50,7 @@
   <tr id="rmNoMatches" style="display:none"><td colspan="7" style="color:var(--muted)">No materials match your search.</td></tr>
 </table>
 </div>
+{% include "partials/pagination.html" %}
 {% endblock %}
 
 {% block scripts %}
