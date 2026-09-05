@@ -11,7 +11,9 @@ with a compact, single-column layout sized for an 80mm thermal/POS printer inste
   .print-letterhead-contact { text-align: center; }
   .print-report-title { display: none; }
   .card { border: none !important; box-shadow: none !important; padding: 0 !important; max-width: 100% !important; }
-  table.list th, table.list td { font-size: 10px; padding: 2px 3px; }
+  table.list { min-width: 0 !important; width: 100% !important; }
+  table.list th, table.list td { font-size: 10px; padding: 2px 3px; word-break: break-word; }
+  .print-amount { font-size: 18px !important; }
   .print-footer { font-size: 9px; margin-top: 8px; padding-top: 4px; border-top: 1px dashed #000; }
 }
 </style>
