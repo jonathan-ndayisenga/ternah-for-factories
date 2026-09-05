@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Invoices{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Invoices</h2>
+  <span class="spacer"></span>
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'finance:invoice_clients' %}">Invoice Clients</a>
+  <a class="btn" href="{% url 'finance:invoice_create' %}">+ New Invoice / Bill</a>
+</div>
+
+<div class="grid charts-2" style="margin-bottom:1rem">
+  <div class="card" style="padding:1rem 1.2rem">
+    <p style="color:var(--muted);font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Outstanding — owed to us (AR)</p>
+    <p style="font-size:1.5rem;font-weight:700;color:var(--ternah-navy);margin-top:.2rem">UGX {{ outstanding_ar|floatformat:2 }}</p>
+  </div>
+  <div class="card" style="padding:1rem 1.2rem">
+    <p style="color:var(--muted);font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Outstanding — we owe suppliers (AP)</p>
+    <p style="font-size:1.5rem;font-weight:700;color:var(--ternah-navy);margin-top:.2rem">UGX {{ outstanding_ap|floatformat:2 }}</p>
+  </div>
+</div>
+
+<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem">
+  <a class="btn ghost" style="{% if not direction %}background:var(--ternah-navy);color:#fff{% else %}background:#EDF1F5;color:var(--ternah-navy){% endif %}" href="?{% if status %}status={{ status }}{% endif %}">All</a>
+  <a class="btn ghost" style="{% if direction == 'AR' %}background:var(--ternah-navy);color:#fff{% else %}background:#EDF1F5;color:var(--ternah-navy){% endif %}" href="?direction=AR{% if status %}&status={{ status }}{% endif %}">Bills to clients</a>
+  <a class="btn ghost" style="{% if direction == 'AP' %}background:var(--ternah-navy);color:#fff{% else %}background:#EDF1F5;color:var(--ternah-navy){% endif %}" href="?direction=AP{% if status %}&status={{ status }}{% endif %}">Supplier bills</a>
+  <span style="border-left:1px solid #D7DEE6;margin:0 .2rem"></span>
+  <a class="btn ghost" style="{% if not status %}background:var(--ternah-navy);color:#fff{% else %}background:#EDF1F5;color:var(--ternah-navy){% endif %}" href="?{% if direction %}direction={{ direction }}{% endif %}">Any status</a>
+  <a class="btn ghost" style="{% if status == 'UNPAID' %}background:var(--ternah-navy);color:#fff{% else %}background:#FDECEA;color:var(--red){% endif %}" href="?status=UNPAID{% if direction %}&direction={{ direction }}{% endif %}">Unpaid</a>
+  <a class="btn ghost" style="{% if status == 'PARTIAL' %}background:var(--ternah-navy);color:#fff{% else %}background:#FDEBD0;color:var(--amber){% endif %}" href="?status=PARTIAL{% if direction %}&direction={{ direction }}{% endif %}">Partially paid</a>
+  <a class="btn ghost" style="{% if status == 'PAID' %}background:var(--ternah-navy);color:#fff{% else %}background:#D6EAD8;color:var(--green){% endif %}" href="?status=PAID{% if direction %}&direction={{ direction }}{% endif %}">Paid</a>
+</div>
+
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Number</th><th>Direction</th><th>Client / Supplier</th><th>Issue date</th><th>Due</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr>
+  {% for inv in page_obj %}
+  <tr{% if inv.is_void %} style="opacity:.5"{% endif %}>
+    <td><strong>{{ inv.number }}</strong></td>
+    <td>{% if inv.direction == "AR" %}Bill to client{% else %}Supplier bill{% endif %}</td>
+    <td>{% if inv.client %}{{ inv.client.name }}{% elif inv.supplier %}{{ inv.supplier.name }}{% else %}—{% endif %}</td>
+    <td>{{ inv.issue_date|date:"d M Y" }}</td>
+    <td>{{ inv.due_date|date:"d M Y"|default:"—" }}</td>
+    <td>UGX {{ inv.total|floatformat:2 }}</td>
+    <td>UGX {{ inv.amount_paid|floatformat:2 }}</td>
+    <td>UGX {{ inv.balance|floatformat:2 }}</td>
+    <td>
+      {% if inv.is_void %}<span class="pill locked">Void</span>
+      {% elif inv.amount_paid <= 0 %}<span class="pill locked">Unpaid</span>
+      {% elif inv.balance > 0 %}<span class="pill warning">Partial</span>
+      {% else %}<span class="pill active">Paid</span>{% endif %}
+    </td>
+    <td><a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.4rem .6rem;min-height:auto" href="{% url 'finance:invoice_detail' inv.pk %}">Open</a></td>
+  </tr>
+  {% empty %}<tr><td colspan="10" style="color:var(--muted)">No invoices yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% include "partials/pagination.html" %}
+{% endblock %}

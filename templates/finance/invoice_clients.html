@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Invoice Clients{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Invoice Clients</h2>
+  <span class="spacer"></span>
+  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'finance:invoices' %}">Back to Invoices</a>
+</div>
+<p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem;max-width:640px">
+  Only clients added here can be invoiced — this is deliberately not every walk-in customer, just the
+  ones you bill on account (e.g. a supermarket buying at negotiated pricing).
+</p>
+
+<div class="card" style="margin-bottom:1rem">
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Client</th><th>Phone</th><th>TIN</th><th>Status</th><th></th></tr>
+    {% for c in clients %}
+    <tr{% if not c.is_active %} style="opacity:.55"{% endif %}>
+      <td><strong>{{ c.name }}</strong>{% if c.address %}<br><span style="color:var(--muted);font-size:.8rem">{{ c.address }}</span>{% endif %}</td>
+      <td>{{ c.phone|default:"—" }}</td>
+      <td>{{ c.tin|default:"—" }}</td>
+      <td>{% if c.is_active %}<span class="pill active">Active</span>{% else %}<span class="pill locked">Inactive</span>{% endif %}</td>
+      <td>
+        <form method="post" action="{% url 'finance:invoice_client_toggle_active' c.pk %}"
+              onsubmit="return confirm('{% if c.is_active %}Deactivate {{ c.name|escapejs }}? They will no longer show up when raising a new invoice — past invoices stay exactly as they are.{% else %}Reactivate {{ c.name|escapejs }} so they can be invoiced again?{% endif %}')">
+          {% csrf_token %}
+          <button class="btn ghost" style="padding:.4rem .6rem;min-height:auto;{% if c.is_active %}background:#FDECEA;color:var(--red){% else %}background:#D6EAD8;color:var(--green){% endif %}">
+            {% if c.is_active %}Deactivate{% else %}Reactivate{% endif %}
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">No invoice clients yet — add one below.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card" style="max-width:480px">
+  <h3>Add a client</h3>
+  <form method="post" class="stack">
+    {% csrf_token %}
+    <label>Name</label>
+    <input name="name" placeholder="e.g. Fresh Mart Supermarket" required>
+    <label>Phone <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input name="phone" type="tel">
+    <label>TIN <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input name="tin">
+    <label>Address <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input name="address">
+    <button class="btn" style="margin-top:1rem">Add client</button>
+  </form>
+</div>
+{% endblock %}

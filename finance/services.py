@@ -185,6 +185,63 @@ def post_capital_transaction(business, date, amount, into, memo, actor):
     return _post(business, None, date, "CAPITAL", ref, memo or "Owner capital", lines, actor=actor)
 
 
+INVOICE_PAYMENT_ACCOUNT_CODES = {"CASH": "1000", "MOBILE_MONEY": "1010", "BANK": "1020"}
+
+
+def post_invoice(invoice, actor=None):
+    """Raising an invoice posts its full total immediately — AR debits
+    Accounts Receivable (they owe us) against Sales Revenue; AP debits
+    Operating Expenses (we owe a supplier for something received) against
+    Accounts Payable. Payment against it is a separate, later entry —
+    post_invoice_payment — same two-step shape as a credit sale."""
+    accounts = get_accounts(invoice.business)
+    if invoice.direction == "AR":
+        memo = f"Invoice {invoice.number} to {invoice.client.name if invoice.client else 'client'}"
+        lines = [(accounts["1100"], invoice.total, 0), (accounts["4000"], 0, invoice.total)]
+        source = "INVOICE_AR"
+    else:
+        memo = f"Bill {invoice.number} from {invoice.supplier.name if invoice.supplier else 'supplier'}"
+        lines = [(accounts["5100"], invoice.total, 0), (accounts["2000"], 0, invoice.total)]
+        source = "INVOICE_AP"
+    return _post(invoice.business, invoice.branch, invoice.issue_date, source,
+                f"invoice:{invoice.pk}", memo, lines, actor=actor)
+
+
+def post_invoice_payment(payment, actor=None):
+    """AR payment received: Dr Cash/MoMo/Bank, Cr Accounts Receivable.
+    AP payment made: Dr Accounts Payable, Cr Cash/MoMo/Bank."""
+    invoice = payment.invoice
+    accounts = get_accounts(invoice.business)
+    pay_account = accounts[INVOICE_PAYMENT_ACCOUNT_CODES.get(payment.method, "1000")]
+    if invoice.direction == "AR":
+        memo = f"Payment for invoice {invoice.number}"
+        lines = [(pay_account, payment.amount, 0), (accounts["1100"], 0, payment.amount)]
+        source = "INVOICE_AR_PAYMENT"
+    else:
+        memo = f"Payment for bill {invoice.number}"
+        lines = [(accounts["2000"], payment.amount, 0), (pay_account, 0, payment.amount)]
+        source = "INVOICE_AP_PAYMENT"
+    return _post(invoice.business, invoice.branch, _local_date(payment.created_at), source,
+                f"invoice_payment:{payment.pk}", memo, lines, actor=actor)
+
+
+def void_invoice(invoice, actor=None):
+    """Mechanical reversal of the raise entry — same technique as
+    reverse_raw_material_purchase. Only meaningful before any payment has
+    landed against the invoice (enforced by the caller); voiding after a
+    partial/full payment would need those payments unwound too, which the
+    view blocks rather than this function guessing at."""
+    original = JournalEntry.objects.filter(business=invoice.business,
+                                           source_ref=f"invoice:{invoice.pk}").prefetch_related("lines").first()
+    if not original:
+        return None
+    kind = "Invoice" if invoice.direction == "AR" else "Bill"
+    memo = f"Void — {kind} {invoice.number}"
+    lines = [(l.ledger_account, l.credit, l.debit) for l in original.lines.all()]
+    return _post(invoice.business, invoice.branch, timezone.now().date(), "REVERSAL",
+                f"reversal:invoice:{invoice.pk}", memo, lines, actor=actor)
+
+
 def post_batch_completion(batch):
     accounts = get_accounts(batch.business)
     memo = f"{batch.batch_number} completed — {batch.actual_quantity} units"

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ invoice.number }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>{% if invoice.direction == "AR" %}Invoice{% else %}Bill{% endif %} {{ invoice.number }}</h2>
+  <span class="spacer"></span>
+  {% if invoice.is_void %}<span class="pill locked">Void</span>
+  {% elif invoice.amount_paid <= 0 %}<span class="pill locked">Unpaid</span>
+  {% elif invoice.balance > 0 %}<span class="pill warning">Partially paid</span>
+  {% else %}<span class="pill active">Paid</span>{% endif %}
+</div>
+
+<div class="grid charts-2" style="margin-bottom:1rem">
+  <div class="card">
+    <h3>Details</h3>
+    <table class="list" style="border:none">
+      <tr><td style="color:var(--muted)">{% if invoice.direction == "AR" %}Client{% else %}Supplier{% endif %}</td>
+          <td><strong>{% if invoice.client %}{{ invoice.client.name }}{% elif invoice.supplier %}{{ invoice.supplier.name }}{% else %}—{% endif %}</strong></td></tr>
+      <tr><td style="color:var(--muted)">Issue date</td><td>{{ invoice.issue_date|date:"d M Y" }}</td></tr>
+      <tr><td style="color:var(--muted)">Due date</td><td>{{ invoice.due_date|date:"d M Y"|default:"—" }}</td></tr>
+      <tr><td style="color:var(--muted)">Raised by</td><td>{{ invoice.created_by.username|default:"—" }}</td></tr>
+      {% if invoice.notes %}<tr><td style="color:var(--muted)">Notes</td><td>{{ invoice.notes }}</td></tr>{% endif %}
+    </table>
+  </div>
+  <div class="card">
+    <h3>Balance</h3>
+    <p style="color:var(--muted);font-size:.85rem">Total</p>
+    <p style="font-size:1.3rem;font-weight:700;color:var(--ternah-navy)">UGX {{ invoice.total|floatformat:2 }}</p>
+    <p style="color:var(--muted);font-size:.85rem;margin-top:.6rem">Paid so far</p>
+    <p style="font-size:1.1rem;font-weight:600">UGX {{ invoice.amount_paid|floatformat:2 }}</p>
+    <p style="color:var(--muted);font-size:.85rem;margin-top:.6rem">Outstanding</p>
+    <p style="font-size:1.3rem;font-weight:700;color:{% if invoice.balance > 0 %}var(--red){% else %}var(--green){% endif %}">UGX {{ invoice.balance|floatformat:2 }}</p>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1rem">
+  <h3>Line items</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Line total</th></tr>
+    {% for l in lines %}
+    <tr><td>{{ l.description }}</td><td>{{ l.quantity|floatformat:3 }}</td><td>UGX {{ l.unit_price|floatformat:2 }}</td><td>UGX {{ l.line_total|floatformat:2 }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="grid charts-2">
+  <div class="card">
+    <h3>Payment history</h3>
+    <div class="table-scroll">
+    <table class="list">
+      <tr><th>Date</th><th>Amount</th><th>Method</th><th>By</th></tr>
+      {% for p in payments %}
+      <tr><td>{{ p.created_at|date:"d M Y" }}</td><td>UGX {{ p.amount|floatformat:2 }}</td><td>{{ p.get_method_display }}</td><td>{{ p.recorded_by.username|default:"—" }}</td></tr>
+      {% empty %}<tr><td colspan="4" style="color:var(--muted)">No payments recorded yet.</td></tr>{% endfor %}
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if not invoice.is_void and invoice.balance > 0 %}
+    <h3>Record a payment</h3>
+    <form method="post" action="{% url 'finance:invoice_payment' invoice.pk %}" class="stack"
+          onsubmit="return confirm('Record this payment? It posts straight to the books and cannot be edited afterward — only the amount you enter here.')">
+      {% csrf_token %}
+      <label>Amount (UGX) <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(up to UGX {{ invoice.balance|floatformat:2 }})</span></label>
+      <input name="amount" type="number" step="0.01" min="0.01" max="{{ invoice.balance }}" required>
+      <label>Method</label>
+      <select name="method">
+        <option value="CASH">Cash</option>
+        <option value="MOBILE_MONEY">Mobile Money</option>
+        <option value="BANK">Bank</option>
+      </select>
+      <button class="btn" style="margin-top:1rem">{% if invoice.direction == "AR" %}Record payment received{% else %}Record payment made{% endif %}</button>
+    </form>
+    {% endif %}
+
+    {% if not invoice.is_void and invoice.amount_paid <= 0 %}
+    <h3 style="margin-top:{% if invoice.balance > 0 %}1.5rem{% else %}0{% endif %}">Void</h3>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:.5rem">Nothing has been paid on this yet, so it can be voided cleanly — its ledger entry gets reversed, not deleted.</p>
+    <form method="post" action="{% url 'finance:invoice_void' invoice.pk %}"
+          onsubmit="return confirm('Void {{ invoice.number|escapejs }}? This reverses its ledger entry entirely. It stays on record marked Void — nothing is deleted.')">
+      {% csrf_token %}
+      <button class="btn ghost" style="background:#FDECEA;color:var(--red)">Void this {% if invoice.direction == "AR" %}invoice{% else %}bill{% endif %}</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

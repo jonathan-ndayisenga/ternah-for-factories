@@ -7,10 +7,12 @@ writes to JournalEntry/JournalLine directly."""
 from datetime import datetime as dt
 from decimal import Decimal, InvalidOperation
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum
-from django.shortcuts import redirect, render
+from django.http import Http404
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
@@ -26,11 +28,12 @@ def _paginate(request, items, page_size=PAGE_SIZE):
 from core.models import Branch
 from production.models import Distribution, RawMaterialPurchase
 from sales.models import BankAccount, DailyOpeningBalance, DebtorPayment, Expense, MomoAccount, PendingAction, Sale, SaleItem
-from .models import JournalEntry, JournalLine, LedgerAccount
-from .services import get_accounts, post_capital_transaction
+from .models import Invoice, InvoiceClient, InvoiceLine, InvoicePayment, JournalEntry, JournalLine, LedgerAccount, Supplier
+from .services import get_accounts, post_capital_transaction, post_invoice, post_invoice_payment, void_invoice
 
 finance_staff_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER"))
 owner_required = user_passes_test(lambda u: u.is_authenticated and u.role == "OWNER")
+invoice_staff_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER", "CASHIER"))
 
 
 def _as_datetime(value):
@@ -373,3 +376,204 @@ def record_capital(request):
                 request.user.business, timezone.localdate(), amount, into,
                 request.POST.get("memo", "").strip(), request.user)
     return redirect("finance:financial_reports")
+
+
+def _invoice_branch_filter(request):
+    if request.user.role in ("MANAGER", "CASHIER"):
+        return {"branch": request.user.branch}
+    return {}
+
+
+@login_required
+@invoice_staff_required
+def invoices(request):
+    biz = request.user.business
+    qs = Invoice.objects.filter(business=biz, **_invoice_branch_filter(request)) \
+        .select_related("client", "supplier", "created_by").order_by("-issue_date", "-created_at")
+    all_invoices = list(qs)
+    outstanding_ar = sum((i.balance() for i in all_invoices if i.direction == "AR" and not i.is_void), Decimal("0"))
+    outstanding_ap = sum((i.balance() for i in all_invoices if i.direction == "AP" and not i.is_void), Decimal("0"))
+
+    direction = request.GET.get("direction", "")
+    status = request.GET.get("status", "")
+    shown = all_invoices
+    if direction in ("AR", "AP"):
+        shown = [i for i in shown if i.direction == direction]
+    if status:
+        shown = [i for i in shown if i.status() == status]
+
+    page_obj, extra_qs = _paginate(request, shown)
+    return render(request, "finance/invoices.html", {
+        "page_obj": page_obj, "extra_qs": extra_qs, "direction": direction, "status": status,
+        "outstanding_ar": outstanding_ar, "outstanding_ap": outstanding_ap, "print_title": "Invoices",
+    })
+
+
+@login_required
+@finance_staff_required
+def invoice_clients(request):
+    biz = request.user.business
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        if not name:
+            messages.error(request, "A client needs a name.")
+            return redirect("finance:invoice_clients")
+        InvoiceClient.objects.create(
+            business=biz, name=name, phone=request.POST.get("phone", "").strip(),
+            tin=request.POST.get("tin", "").strip(), address=request.POST.get("address", "").strip(),
+        )
+        messages.success(request, f"{name} added — they can now be invoiced from Invoices.")
+        return redirect("finance:invoice_clients")
+    clients = InvoiceClient.objects.filter(business=biz).order_by("-is_active", "name")
+    return render(request, "finance/invoice_clients.html", {"clients": clients})
+
+
+@login_required
+@finance_staff_required
+def invoice_client_toggle_active(request, pk):
+    client = get_object_or_404(InvoiceClient, pk=pk, business=request.user.business)
+    if request.method == "POST":
+        client.is_active = not client.is_active
+        client.save(update_fields=["is_active"])
+        label = "reactivated" if client.is_active else "deactivated — hidden from new invoices, past invoices are untouched"
+        messages.success(request, f"{client.name} {label}.")
+    return redirect("finance:invoice_clients")
+
+
+@login_required
+@invoice_staff_required
+def invoice_create(request):
+    biz = request.user.business
+    if request.method == "POST":
+        direction = request.POST.get("direction")
+        if direction not in ("AR", "AP"):
+            messages.error(request, "Pick whether this bills a client or records a supplier bill.")
+            return redirect("finance:invoice_create")
+
+        client, supplier = None, None
+        if direction == "AR":
+            client = InvoiceClient.objects.filter(pk=request.POST.get("client"), business=biz, is_active=True).first()
+            if not client:
+                messages.error(request, "Pick a client to invoice — only active, invoiceable clients show up here. Add one from Invoice Clients first.")
+                return redirect("finance:invoice_create")
+        else:
+            supplier_name = request.POST.get("supplier_name", "").strip()
+            if not supplier_name:
+                messages.error(request, "A supplier bill needs the supplier's name.")
+                return redirect("finance:invoice_create")
+            supplier, _ = Supplier.objects.get_or_create(business=biz, name=supplier_name)
+            supplier_phone = request.POST.get("supplier_phone", "").strip()
+            if supplier_phone and supplier_phone != supplier.phone:
+                supplier.phone = supplier_phone
+                supplier.save(update_fields=["phone"])
+
+        lines_data, total = [], Decimal("0")
+        for desc, qty_raw, price_raw in zip(request.POST.getlist("line_description"),
+                                             request.POST.getlist("line_quantity"),
+                                             request.POST.getlist("line_unit_price")):
+            desc = desc.strip()
+            if not desc:
+                continue
+            try:
+                qty, price = Decimal(qty_raw or "0"), Decimal(price_raw or "0")
+            except InvalidOperation:
+                continue
+            if qty <= 0 or price <= 0:
+                continue
+            line_total = (qty * price).quantize(Decimal("0.01"))
+            lines_data.append((desc, qty, price, line_total))
+            total += line_total
+
+        if not lines_data:
+            messages.error(request, "Add at least one line with a description, quantity and price.")
+            return redirect("finance:invoice_create")
+
+        seq = Invoice.objects.filter(business=biz, created_at__date=timezone.localdate()).count() + 1
+        number = f"{'INV' if direction == 'AR' else 'BILL'}-{timezone.localdate():%d%m%y}-{seq:03d}"
+
+        invoice = Invoice.objects.create(
+            business=biz, branch=request.user.branch, direction=direction, number=number,
+            client=client, supplier=supplier, issue_date=request.POST.get("issue_date") or timezone.localdate(),
+            due_date=request.POST.get("due_date") or None, total=total,
+            notes=request.POST.get("notes", "").strip(), created_by=request.user,
+        )
+        for desc, qty, price, line_total in lines_data:
+            InvoiceLine.objects.create(invoice=invoice, description=desc, quantity=qty,
+                                       unit_price=price, line_total=line_total)
+        post_invoice(invoice, actor=request.user)
+
+        who = client.name if client else supplier.name
+        kind = "Invoice" if direction == "AR" else "Bill"
+        messages.success(request, f"{kind} {number} raised for UGX {total:,.2f} — {who}. This posts straight to the books.")
+        return redirect("finance:invoice_detail", pk=invoice.pk)
+
+    clients = InvoiceClient.objects.filter(business=biz, is_active=True).order_by("name")
+    return render(request, "finance/invoice_create.html", {"clients": clients, "today": timezone.localdate()})
+
+
+@login_required
+@invoice_staff_required
+def invoice_detail(request, pk):
+    biz = request.user.business
+    invoice = get_object_or_404(
+        Invoice.objects.select_related("client", "supplier", "created_by"), pk=pk, business=biz)
+    if request.user.role in ("MANAGER", "CASHIER") and invoice.branch_id and invoice.branch_id != request.user.branch_id:
+        raise Http404
+    return render(request, "finance/invoice_detail.html", {
+        "invoice": invoice, "lines": invoice.lines.all(),
+        "payments": invoice.payments.select_related("recorded_by").order_by("-created_at"),
+        "print_title": f"{'Invoice' if invoice.direction == 'AR' else 'Bill'} {invoice.number}",
+    })
+
+
+@login_required
+@invoice_staff_required
+def invoice_payment(request, pk):
+    biz = request.user.business
+    invoice = get_object_or_404(Invoice, pk=pk, business=biz)
+    if request.method != "POST":
+        return redirect("finance:invoice_detail", pk=invoice.pk)
+    if invoice.is_void:
+        messages.error(request, "This invoice is void — no payments can be recorded against it.")
+        return redirect("finance:invoice_detail", pk=invoice.pk)
+    try:
+        amount = Decimal(request.POST.get("amount", ""))
+    except InvalidOperation:
+        messages.error(request, "Enter a real amount.")
+        return redirect("finance:invoice_detail", pk=invoice.pk)
+    remaining = invoice.balance()
+    if amount <= 0:
+        messages.error(request, "Payment amount must be greater than zero.")
+        return redirect("finance:invoice_detail", pk=invoice.pk)
+    if amount > remaining:
+        messages.error(request, f"That's more than what's outstanding (UGX {remaining:,.2f}). Enter an amount up to the balance.")
+        return redirect("finance:invoice_detail", pk=invoice.pk)
+    method = request.POST.get("method") if request.POST.get("method") in ("CASH", "MOBILE_MONEY", "BANK") else "CASH"
+    payment = InvoicePayment.objects.create(invoice=invoice, amount=amount, method=method, recorded_by=request.user)
+    invoice.amount_paid = invoice.amount_paid + amount
+    invoice.save(update_fields=["amount_paid"])
+    post_invoice_payment(payment, actor=request.user)
+    kind = "received from" if invoice.direction == "AR" else "paid to"
+    who = invoice.client.name if invoice.client else invoice.supplier.name
+    messages.success(request, f"UGX {amount:,.2f} {kind} {who} recorded. Status: {invoice.status().title()}.")
+    return redirect("finance:invoice_detail", pk=invoice.pk)
+
+
+@login_required
+@invoice_staff_required
+def invoice_void(request, pk):
+    biz = request.user.business
+    invoice = get_object_or_404(Invoice, pk=pk, business=biz)
+    if request.method != "POST":
+        return redirect("finance:invoice_detail", pk=invoice.pk)
+    if invoice.is_void:
+        messages.error(request, "Already void.")
+        return redirect("finance:invoice_detail", pk=invoice.pk)
+    if invoice.amount_paid > 0:
+        messages.error(request, f"Can't void — UGX {invoice.amount_paid:,.2f} has already been paid against this. Void is only for invoices nothing has been paid on yet.")
+        return redirect("finance:invoice_detail", pk=invoice.pk)
+    void_invoice(invoice, actor=request.user)
+    invoice.is_void = True
+    invoice.save(update_fields=["is_void"])
+    messages.success(request, f"{'Invoice' if invoice.direction == 'AR' else 'Bill'} {invoice.number} voided — its ledger entry has been reversed.")
+    return redirect("finance:invoice_detail", pk=invoice.pk)

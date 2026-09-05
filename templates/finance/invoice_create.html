@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}New Invoice / Bill{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>New Invoice / Bill</h2>
+</div>
+
+<div class="card" style="max-width:760px">
+  <div style="display:flex;gap:.6rem;margin-bottom:1.2rem">
+    <label style="display:flex;align-items:center;gap:.4rem;width:auto;text-transform:none;letter-spacing:0;font-weight:600;font-size:.95rem;border:1px solid #D7DEE6;border-radius:8px;padding:.6rem 1rem;cursor:pointer">
+      <input type="radio" name="direction_toggle" value="AR" checked onchange="toggleDirection()" style="width:auto"> Bill a client
+    </label>
+    <label style="display:flex;align-items:center;gap:.4rem;width:auto;text-transform:none;letter-spacing:0;font-weight:600;font-size:.95rem;border:1px solid #D7DEE6;border-radius:8px;padding:.6rem 1rem;cursor:pointer">
+      <input type="radio" name="direction_toggle" value="AP" onchange="toggleDirection()" style="width:auto"> Record a supplier bill
+    </label>
+  </div>
+
+  <form method="post" id="invoiceForm" onsubmit="return confirmInvoice()">
+    {% csrf_token %}
+    <input type="hidden" name="direction" id="directionField" value="AR">
+
+    <div id="clientField">
+      <label>Client</label>
+      {% if clients %}
+      <select name="client">
+        <option value="">Select client…</option>
+        {% for c in clients %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <p style="color:var(--red);font-size:.85rem">No invoiceable clients yet.
+        <a href="{% url 'finance:invoice_clients' %}" style="color:var(--ternah-blue)">Add one first</a>.</p>
+      {% endif %}
+    </div>
+
+    <div id="supplierFields" style="display:none">
+      <label>Supplier name</label>
+      <input name="supplier_name" placeholder="Who's this bill from?">
+      <label>Supplier phone <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input name="supplier_phone" type="tel">
+    </div>
+
+    <div style="display:flex;gap:1rem;margin-top:.8rem">
+      <div style="flex:1">
+        <label>Issue date</label>
+        <input name="issue_date" type="date" value="{{ today|date:'Y-m-d' }}" required>
+      </div>
+      <div style="flex:1">
+        <label>Due date <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input name="due_date" type="date">
+      </div>
+    </div>
+
+    <h3 style="margin-top:1.2rem;margin-bottom:.5rem;color:var(--ternah-navy)">Line items</h3>
+    <div id="lineRows">
+      <div class="inv-line">
+        <input type="text" name="line_description" placeholder="Description" class="inv-desc">
+        <input type="number" step="0.001" min="0" name="line_quantity" placeholder="Qty" class="inv-qty" value="1" oninput="recomputeInvoice()">
+        <input type="number" step="0.01" min="0" name="line_unit_price" placeholder="Unit price" class="inv-price" oninput="recomputeInvoice()">
+        <span class="inv-line-total">UGX 0.00</span>
+        <button type="button" class="btn ghost row-remove" onclick="removeInvLine(this)">&times;</button>
+      </div>
+    </div>
+    <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addInvLine()">+ Add line</button>
+
+    <label style="margin-top:1rem">Notes <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <textarea name="notes" rows="2"></textarea>
+
+    <p style="margin-top:1rem;font-weight:700;color:var(--ternah-navy)">Total: <span id="invoiceTotal">UGX 0.00</span></p>
+
+    <button class="btn" style="margin-top:1rem">Raise it</button>
+  </form>
+</div>
+
+<style>
+  .inv-line { display:flex; gap:.5rem; align-items:center; margin-bottom:.5rem; }
+  .inv-desc { flex:2; min-width:180px; padding:.55rem .6rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; }
+  .inv-qty { flex:0 0 80px; width:80px; padding:.55rem .6rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; }
+  .inv-price { flex:0 0 120px; width:120px; padding:.55rem .6rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; }
+  .inv-line-total { flex:0 0 110px; text-align:right; font-weight:600; color:var(--ternah-navy); font-size:.85rem; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleDirection() {
+  const ar = document.querySelector('input[name="direction_toggle"][value="AR"]').checked;
+  document.getElementById("directionField").value = ar ? "AR" : "AP";
+  document.getElementById("clientField").style.display = ar ? "" : "none";
+  document.getElementById("supplierFields").style.display = ar ? "none" : "";
+}
+function recomputeInvoice() {
+  let total = 0;
+  document.querySelectorAll("#lineRows .inv-line").forEach(row => {
+    const qty = parseFloat(row.querySelector(".inv-qty").value) || 0;
+    const price = parseFloat(row.querySelector(".inv-price").value) || 0;
+    const lineTotal = qty * price;
+    row.querySelector(".inv-line-total").textContent = "UGX " + lineTotal.toFixed(2);
+    total += lineTotal;
+  });
+  document.getElementById("invoiceTotal").textContent = "UGX " + total.toFixed(2);
+}
+function addInvLine() {
+  const rows = document.getElementById("lineRows");
+  const row = rows.firstElementChild.cloneNode(true);
+  row.querySelector(".inv-desc").value = "";
+  row.querySelector(".inv-qty").value = "1";
+  row.querySelector(".inv-price").value = "";
+  row.querySelector(".inv-line-total").textContent = "UGX 0.00";
+  rows.appendChild(row);
+}
+function removeInvLine(btn) {
+  const rows = document.getElementById("lineRows");
+  if (rows.children.length > 1) { btn.closest(".inv-line").remove(); recomputeInvoice(); }
+}
+function confirmInvoice() {
+  const isAR = document.getElementById("directionField").value === "AR";
+  const total = document.getElementById("invoiceTotal").textContent;
+  const kind = isAR ? "an invoice to the selected client" : "a bill from the named supplier";
+  return confirm(`Raise ${kind} for ${total}?\n\nThis posts straight to the books — ${isAR ? "debits Accounts Receivable, credits Sales Revenue" : "debits Operating Expenses, credits Accounts Payable"}.`);
+}
+document.addEventListener("DOMContentLoaded", recomputeInvoice);
+</script>
+{% endblock %}
