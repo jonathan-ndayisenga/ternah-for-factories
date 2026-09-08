@@ -28,4 +28,8 @@ urlpatterns = [
     path("stock-requests/", views.stock_request_list, name="stock_requests"),
     path("stock-requests/<int:pk>/fulfill/", views.stock_request_fulfill, name="stock_request_fulfill"),
     path("switch-factory/<int:pk>/", views.switch_factory, name="switch_factory"),
+    path("charts/output/", views.chart_output, name="chart_output"),
+    path("charts/unit-cost-trend/", views.chart_unit_cost_trend, name="chart_unit_cost_trend"),
+    path("charts/finished-goods/", views.chart_finished_goods, name="chart_finished_goods"),
+    path("charts/raw-material-spend/", views.chart_raw_material_spend, name="chart_raw_material_spend"),
 ]

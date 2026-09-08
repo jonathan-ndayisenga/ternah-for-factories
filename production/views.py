@@ -10,7 +10,8 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
 from django.core.paginator import Paginator
-from django.db.models import Count, F, ProtectedError
+from django.db.models import Count, F, ProtectedError, Sum
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -1002,3 +1003,61 @@ def processing_list(request):
     batches = ProductionBatch.objects.filter(business=request.user.business, branch=factory, status="DISPENSED") \
         .select_related("product").order_by("date")
     return render(request, "production/processing.html", {"batches": batches})
+
+
+# ------------------------------------------------------------------ Charts
+# Same shape as reports.views' owner-dashboard charts: JSON in, Chart.js on
+# the page draws it. Everything here is scoped to the currently active
+# factory (_current_factory), same as the rest of the Production dashboard.
+
+@production_staff_required
+def chart_output(request):
+    """Line — units actually produced per day, last 30 days."""
+    factory = _current_factory(request)
+    today = date.today()
+    start = today - timedelta(days=29)
+    qs = ProductionBatch.objects.filter(business=request.user.business, branch=factory, status="COMPLETED",
+                                        date__gte=start)
+    by_day = {r["date"]: r["s"] for r in qs.values("date").annotate(s=Sum("actual_quantity"))}
+    days = [start + timedelta(days=i) for i in range(30)]
+    return JsonResponse({"labels": [d.strftime("%d %b") for d in days],
+                         "data": [by_day.get(d, 0) for d in days]})
+
+
+@production_staff_required
+def chart_unit_cost_trend(request):
+    """Line — unit cost of the last 15 completed batches, chronological —
+    catches raw-material price drift or a costly outlier batch."""
+    factory = _current_factory(request)
+    batches = ProductionBatch.objects.filter(business=request.user.business, branch=factory, status="COMPLETED") \
+        .select_related("product").order_by("-date", "-id")[:15]
+    batches = list(reversed(batches))
+    return JsonResponse({
+        "labels": [b.batch_number for b in batches],
+        "data": [float(b.unit_cost_at_production) for b in batches],
+        "products": [b.product.name for b in batches],
+    })
+
+
+@production_staff_required
+def chart_finished_goods(request):
+    """Bar — what's actually sitting in this factory's finished-goods store
+    right now, top 8 by quantity."""
+    factory = _current_factory(request)
+    factory_store = InventoryLocation.objects.filter(business=request.user.business, branch=factory,
+                                                      type="PRODUCTION_STORE").first() if factory else None
+    items = StockItem.objects.filter(location=factory_store).select_related("product") \
+        .order_by("-quantity")[:8] if factory_store else []
+    return JsonResponse({"labels": [i.product.name for i in items], "data": [i.quantity for i in items]})
+
+
+@production_staff_required
+def chart_raw_material_spend(request):
+    """Bar — raw material spend by material, last 90 days — where the
+    money's actually going."""
+    factory = _current_factory(request)
+    start = date.today() - timedelta(days=89)
+    qs = RawMaterialPurchase.objects.filter(raw_material__business=request.user.business, branch=factory,
+                                            is_reversed=False, purchase_date__gte=start) \
+        .values("raw_material__name").annotate(s=Sum("total_cost")).order_by("-s")[:8]
+    return JsonResponse({"labels": [r["raw_material__name"] for r in qs], "data": [float(r["s"]) for r in qs]})

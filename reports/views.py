@@ -75,18 +75,18 @@ def stats_cards(request):
 def factory_stats_cards(request, branch):
     biz, today = _biz(request), timezone.localdate()
     materials = list(RawMaterial.objects.filter(business=biz))
-    low_stock = sum(1 for m in materials if m.current_stock() <= m.reorder_level)
+    low_stock = sum(1 for m in materials if m.current_stock(branch=branch) <= m.reorder_level)
     expiring = RawMaterialPurchase.objects.filter(
-        raw_material__business=biz, remaining_quantity__gt=0,
+        raw_material__business=biz, branch=branch, remaining_quantity__gt=0,
         expiry_date__isnull=False, expiry_date__lte=today + timedelta(days=60),
     ).count()
-    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+    factory_store = InventoryLocation.objects.filter(business=biz, branch=branch, type="PRODUCTION_STORE").first()
     store_value = 0
     if factory_store:
         store_value = StockItem.objects.filter(location=factory_store).aggregate(
             v=Sum(ExpressionWrapper(F("quantity") * F("buying_price"), output_field=DecimalField(max_digits=16, decimal_places=2)))
         )["v"] or 0
-    processing = ProductionBatch.objects.filter(business=biz, status="DISPENSED").count()
+    processing = ProductionBatch.objects.filter(business=biz, branch=branch, status="DISPENSED").count()
     return render(request, "partials/factory_stats_cards.html", {
         "low_stock": low_stock, "expiring": expiring,
         "store_value": store_value, "processing": processing,
@@ -98,19 +98,20 @@ def factory_snapshot(request):
     """The tables behind the factory stat cards — reorder/expiry watch,
     finished goods on hand, and the most recent batches. Only meaningful
     once the dashboard is actually filtered to the factory branch."""
+    branch = _selected_branch(request)
     biz, today = _biz(request), timezone.localdate()
     materials = list(RawMaterial.objects.filter(business=biz))
     for m in materials:
-        m.stock = m.current_stock()
+        m.stock = m.current_stock(branch=branch)
     low_stock = [m for m in materials if m.stock <= m.reorder_level]
     expiring = RawMaterialPurchase.objects.filter(
-        raw_material__business=biz, remaining_quantity__gt=0,
+        raw_material__business=biz, branch=branch, remaining_quantity__gt=0,
         expiry_date__isnull=False, expiry_date__lte=today + timedelta(days=60),
     ).select_related("raw_material").order_by("expiry_date")[:10]
-    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+    factory_store = InventoryLocation.objects.filter(business=biz, branch=branch, type="PRODUCTION_STORE").first()
     store_items = StockItem.objects.filter(location=factory_store).select_related("product") \
         if factory_store else StockItem.objects.none()
-    recent_batches = ProductionBatch.objects.filter(business=biz).select_related("product") \
+    recent_batches = ProductionBatch.objects.filter(business=biz, branch=branch).select_related("product") \
         .order_by("-date", "-id")[:8]
     return render(request, "partials/factory_snapshot.html", {
         "low_stock": low_stock, "expiring": expiring,

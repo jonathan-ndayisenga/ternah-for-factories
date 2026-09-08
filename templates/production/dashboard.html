@@ -37,6 +37,13 @@
 {% endif %}
 
 <div class="grid charts-2" style="margin-top:1rem">
+  <div class="card"><h3>Output — last 30 days</h3><div class="chart-wrap"><canvas id="chartOutput"></canvas></div></div>
+  <div class="card"><h3>Unit Cost — last 15 completed batches</h3><div class="chart-wrap"><canvas id="chartUnitCost"></canvas></div></div>
+  <div class="card"><h3>Finished Goods Store — top 8</h3><div class="chart-wrap"><canvas id="chartFinishedGoods"></canvas></div></div>
+  <div class="card"><h3>Raw Material Spend — last 90 days</h3><div class="chart-wrap"><canvas id="chartRmSpend"></canvas></div></div>
+</div>
+
+<div class="grid charts-2" style="margin-top:1rem">
   <div class="card">
     <h3>Raw Materials — reorder & expiry watch</h3>
     <div class="table-scroll">
@@ -106,4 +113,34 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const NAVY = "#0F2A4A", BLUE = "#2563EB", GREEN = "#1E7A46", AMBER = "#D97706";
+const charts = {};
+async function draw(id, url, build) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(el, build(data));
+}
+draw("chartOutput", "{% url 'production:chart_output' %}", d => ({type: "line",
+  data: {labels: d.labels, datasets: [{label: "Units produced", data: d.data, borderColor: BLUE,
+         backgroundColor: "rgba(37,99,235,.12)", fill: true, tension: .3}]},
+  options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}}}));
+draw("chartUnitCost", "{% url 'production:chart_unit_cost_trend' %}", d => ({type: "line",
+  data: {labels: d.labels, datasets: [{label: "Unit cost (UGX)", data: d.data, borderColor: AMBER,
+         backgroundColor: "rgba(217,119,6,.12)", fill: true, tension: .3}]},
+  options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false},
+    tooltip: {callbacks: {afterLabel: c => d.products[c.dataIndex]}}}}}));
+draw("chartFinishedGoods", "{% url 'production:chart_finished_goods' %}", d => ({type: "bar",
+  data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: GREEN}]},
+  options: {responsive: true, maintainAspectRatio: false, indexAxis: "y", plugins: {legend: {display: false}}}}));
+draw("chartRmSpend", "{% url 'production:chart_raw_material_spend' %}", d => ({type: "bar",
+  data: {labels: d.labels, datasets: [{data: d.data, backgroundColor: NAVY}]},
+  options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}}}));
+</script>
 {% endblock %}
