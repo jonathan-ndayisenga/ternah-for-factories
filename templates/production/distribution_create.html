@@ -2,7 +2,10 @@
 {% block title %}New Distribution{% endblock %}
 {% block content %}
 <div class="card" style="max-width:640px;margin:0 auto">
-  <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Send Stock</h2>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+    <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">Send Stock{% if factory %} — from {{ factory.name }}{% endif %}</h2>
+    {% include "partials/factory_switcher.html" %}
+  </div>
   <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Only priced (active) products can be distributed — draft products aren't offered below.</p>
   {% if error %}<p style="color:var(--red);font-weight:600;font-size:.9rem;margin-bottom:.5rem">{{ error }}</p>{% endif %}
   {{ batch_data|json_script:"batchData" }}

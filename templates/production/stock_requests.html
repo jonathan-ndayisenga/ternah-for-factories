@@ -2,7 +2,9 @@
 {% block title %}Stock Requests{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h2>Stock Requests</h2>
+  <h2>Stock Requests{% if factory %} — fulfilling from {{ factory.name }}{% endif %}</h2>
+  <span class="spacer"></span>
+  {% include "partials/factory_switcher.html" %}
 </div>
 
 {% if requests %}

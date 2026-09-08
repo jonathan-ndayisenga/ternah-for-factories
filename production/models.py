@@ -22,11 +22,18 @@ class RawMaterial(TimeStamped):
     reorder_level = models.DecimalField(max_digits=12, decimal_places=3, default=0)
     is_active = models.BooleanField(default=True)   # soft delete — purchases/formula lines keep pointing at it
 
-    def current_stock(self):
-        return self.purchases.aggregate(s=models.Sum("remaining_quantity"))["s"] or Decimal("0")
+    def current_stock(self, branch=None):
+        """The catalog entry is shared business-wide, but each factory holds
+        its own physical stock — pass branch to see one factory's share;
+        omit it for the business-wide total (used for cross-factory rollups)."""
+        qs = self.purchases.all() if branch is None else self.purchases.filter(branch=branch)
+        return qs.aggregate(s=models.Sum("remaining_quantity"))["s"] or Decimal("0")
 
-    def latest_unit_cost(self):
-        p = self.purchases.exclude(is_reversed=True).order_by("-purchase_date").first()
+    def latest_unit_cost(self, branch=None):
+        qs = self.purchases.exclude(is_reversed=True)
+        if branch is not None:
+            qs = qs.filter(branch=branch)
+        p = qs.order_by("-purchase_date").first()
         return p.unit_cost if p else Decimal("0")
 
     def __str__(self):
@@ -36,6 +43,8 @@ class RawMaterial(TimeStamped):
 class RawMaterialPurchase(TimeStamped):
     """20 L at UGX 100,000 total -> unit_cost auto = 5,000/L. FEFO draw-down via remaining_quantity."""
     raw_material = models.ForeignKey(RawMaterial, on_delete=models.CASCADE, related_name="purchases")
+    branch = models.ForeignKey("core.Branch", on_delete=models.PROTECT, related_name="raw_material_purchases",
+                               )   # which factory holds this stock — the catalog entry is shared, this isn't
     quantity = models.DecimalField(max_digits=12, decimal_places=3)
     total_cost = models.DecimalField(max_digits=14, decimal_places=2)
     unit_cost = models.DecimalField(max_digits=14, decimal_places=4, editable=False)
@@ -134,6 +143,8 @@ class FormulaLine(models.Model):
 class ProductionBatch(TimeStamped):
     STATUS = [("PLANNED", "Planned"), ("DISPENSED", "Dispensed"), ("COMPLETED", "Completed")]
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
+    branch = models.ForeignKey("core.Branch", on_delete=models.PROTECT, related_name="production_batches",
+                               )   # which factory ran this batch
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
     formula = models.ForeignKey(ProductFormula, on_delete=models.PROTECT)      # version pinned
     batch_number = models.CharField(max_length=40)                              # BATCH{INITIALS}-DDMMYY-SEQ
@@ -172,6 +183,8 @@ class Distribution(TimeStamped):
     """Production -> a branch's inventory or a rep's inventory. Pending until receiver confirms."""
     STATUS = [("SENT", "Sent"), ("RECEIVED", "Received"), ("DISPUTED", "Disputed")]
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
+    sender_branch = models.ForeignKey("core.Branch", on_delete=models.PROTECT, related_name="distributions_sent",
+                                      )   # which factory sent it — any factory can reach any outlet
     receiver_location = models.ForeignKey("sales.InventoryLocation", on_delete=models.PROTECT)
     delivery_note_number = models.CharField(max_length=40)                      # DN{INITIALS}-DDMMYY-SEQ
     date = models.DateField()

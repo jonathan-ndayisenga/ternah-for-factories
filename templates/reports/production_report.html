@@ -10,10 +10,11 @@
 </div>
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Batch</th><th>Product</th><th>Date</th><th>Target</th><th>Actual</th><th>Unit Cost</th><th>Total Cost</th><th>Status</th><th></th></tr>
+  <tr><th>Batch</th><th>Factory</th><th>Product</th><th>Date</th><th>Target</th><th>Actual</th><th>Unit Cost</th><th>Total Cost</th><th>Status</th><th></th></tr>
   {% for b in batches %}
   <tr>
     <td><a href="{% url 'reports:production_batch_detail' b.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ b.batch_number }}</a></td>
+    <td>{{ b.branch.name|default:"—" }}</td>
     <td>{{ b.product.name }}</td>
     <td>{{ b.date|date:"d M Y" }}</td>
     <td>{{ b.target_quantity }}</td>
@@ -31,7 +32,7 @@
       {% endif %}
     </td>
   </tr>
-  {% empty %}<tr><td colspan="9" style="color:var(--muted)">No production batches yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="10" style="color:var(--muted)">No production batches yet.</td></tr>{% endfor %}
 </table>
 </div>
 {% endblock %}

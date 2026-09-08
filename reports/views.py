@@ -220,7 +220,7 @@ def chart_monthly_gp(request):
 def production_report(request):
     """Owner-only: every batch ever run, cost and all."""
     batches = ProductionBatch.objects.filter(business=_biz(request)) \
-        .select_related("product", "formula").order_by("-date", "-id")
+        .select_related("product", "formula", "branch").order_by("-date", "-id")
     return render(request, "reports/production_report.html", {"batches": batches})
 
 

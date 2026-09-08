@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
+from core.models import Branch
 from finance.models import Supplier, SupplierPayable
 from finance.services import post_batch_completion, post_raw_material_purchase, reverse_raw_material_purchase
 from sales.models import InventoryLocation, StockItem, StockMovement, StockRequest
@@ -42,6 +43,38 @@ def _has_production_access(u):
 
 
 production_staff_required = user_passes_test(_has_production_access)
+
+
+def _factories(business):
+    return Branch.objects.filter(business=business, kind="FACTORY", is_active=True).order_by("name")
+
+
+def _current_factory(request):
+    """Which factory this production session is working in. A native
+    Production user is pinned to their own branch — no picking needed.
+    Owner and a Manager acting as Production don't belong to a factory
+    branch themselves, so they pick one via session; with only one factory
+    (the common case) that's transparent — there's nothing to choose."""
+    biz = request.user.business
+    if request.user.role == "PRODUCTION" and request.user.branch_id and request.user.branch.kind == "FACTORY":
+        return request.user.branch
+    factories = _factories(biz)
+    factory_id = request.session.get("active_factory_id")
+    if factory_id:
+        match = factories.filter(pk=factory_id).first()
+        if match:
+            return match
+    return factories.first()
+
+
+@production_staff_required
+def switch_factory(request, pk):
+    factory = get_object_or_404(Branch, pk=pk, business=request.user.business, kind="FACTORY")
+    request.session["active_factory_id"] = factory.pk
+    next_url = request.POST.get("next") or request.GET.get("next") or "production:dashboard"
+    if url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(next_url)
+    return redirect("production:dashboard")
 
 TIER_LABELS = [("RETAIL", "retail_price", "Retail"), ("WHOLESALE", "wholesale_price", "Wholesale"),
                ("DISTRIBUTION", "distribution_price", "Distribution")]
@@ -202,20 +235,20 @@ def product_price_edit(request, pk):
     })
 
 
-def _batches_available(product):
-    """COMPLETED batches of this product still holding stock at the factory,
-    earliest expiry first (nulls last), then oldest manufactured — the same
-    FEFO order raw materials already dispense in."""
-    return ProductionBatch.objects.filter(product=product, status="COMPLETED", remaining_quantity__gt=0) \
+def _batches_available(product, branch):
+    """COMPLETED batches of this product still holding stock at this one
+    factory, earliest expiry first (nulls last), then oldest manufactured —
+    the same FEFO order raw materials already dispense in."""
+    return ProductionBatch.objects.filter(product=product, branch=branch, status="COMPLETED", remaining_quantity__gt=0) \
         .order_by(F("expiry_date").asc(nulls_last=True), "manufacture_date", "date", "id")
 
 
-def _dispense_finished_goods_fefo(dist, product, qty):
+def _dispense_finished_goods_fefo(dist, product, qty, branch):
     """Walks this product's batches FEFO, writing one DistributionLine per
     batch actually touched (so 'which batch went out' is a real record, not
     a guess) and decrementing each batch's own remaining_quantity."""
     remaining = qty
-    for batch in _batches_available(product):
+    for batch in _batches_available(product, branch):
         if remaining <= 0:
             break
         take = min(remaining, batch.remaining_quantity)
@@ -237,10 +270,12 @@ def distribution_create(request):
     Can never send more than the finished-goods store actually holds —
     validated against the same figures shown live in the form."""
     biz = request.user.business
+    factory = _current_factory(request)
     locations = InventoryLocation.objects.filter(business=biz).exclude(type="PRODUCTION_STORE") \
         .select_related("branch", "rep")
     active_products = Product.objects.filter(business=biz, status="ACTIVE").order_by("name")
-    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+    factory_store = InventoryLocation.objects.filter(business=biz, branch=factory, type="PRODUCTION_STORE").first() \
+        if factory else None
 
     stock_by_product = {
         item.product_id: item.quantity
@@ -252,8 +287,8 @@ def distribution_create(request):
         batch_data[str(p.id)] = [
             {"batch_number": b.batch_number, "manufacture_date": b.manufacture_date.strftime("%d %b %Y") if b.manufacture_date else "—",
              "expiry_date": b.expiry_date.strftime("%d %b %Y") if b.expiry_date else None, "remaining": b.remaining_quantity}
-            for b in _batches_available(p)
-        ]
+            for b in _batches_available(p, factory)
+        ] if factory else []
 
     error = None
     if request.method == "POST":
@@ -287,13 +322,13 @@ def distribution_create(request):
         if not error:
             seq = Distribution.objects.filter(business=biz, date=date.today()).count() + 1
             dist = Distribution.objects.create(
-                business=biz, receiver_location=receiver,
+                business=biz, sender_branch=factory, receiver_location=receiver,
                 delivery_note_number=f"DN-{request.user.username[:4].upper()}-{date.today():%d%m%y}-{seq:03d}",
                 date=date.today(), status="SENT", created_by=request.user,
             )
             for product, qty in lines:
                 store_item = StockItem.objects.filter(location=factory_store, product=product).first()
-                _dispense_finished_goods_fefo(dist, product, qty)
+                _dispense_finished_goods_fefo(dist, product, qty, factory)
                 store_item.quantity -= qty
                 store_item.save(update_fields=["quantity"])
                 StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,
@@ -303,6 +338,7 @@ def distribution_create(request):
 
     return render(request, "production/distribution_create.html", {
         "locations": locations, "active_products": active_products, "error": error, "batch_data": batch_data,
+        "factory": factory, "factories": _factories(biz),
     })
 
 
@@ -310,7 +346,7 @@ def distribution_create(request):
 def distribution_list(request):
     biz = request.user.business
     distributions = Distribution.objects.filter(business=biz) \
-        .select_related("receiver_location__branch", "receiver_location__rep", "created_by", "confirmed_by") \
+        .select_related("sender_branch", "receiver_location__branch", "receiver_location__rep", "created_by", "confirmed_by") \
         .prefetch_related("lines__product").order_by("-date", "-id")
     return render(request, "production/distributions.html", {"distributions": distributions})
 
@@ -329,7 +365,7 @@ def distribution_confirm(request, pk):
     dist = get_object_or_404(Distribution, pk=pk, business=biz, status="SENT")
     action = request.POST.get("action")
     if action == "confirm":
-        factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+        factory_store = InventoryLocation.objects.filter(business=biz, branch=dist.sender_branch, type="PRODUCTION_STORE").first()
         for line in dist.lines.select_related("product"):
             # carry the factory's current cost basis (set at batch
             # completion) over — becomes the receiver's buying price for
@@ -392,13 +428,16 @@ def category_list(request):
 @production_staff_required
 def raw_material_list(request):
     biz = request.user.business
+    factory = _current_factory(request)
     materials = RawMaterial.objects.filter(business=biz).order_by("name")
     page_obj = Paginator(materials, 25).get_page(request.GET.get("page"))
     for m in page_obj:
-        m.stock = m.current_stock()
-        m.cost = m.latest_unit_cost()
+        m.stock = m.current_stock(branch=factory)
+        m.cost = m.latest_unit_cost(branch=factory)
         m.low = m.stock <= m.reorder_level
-    return render(request, "production/raw_materials.html", {"page_obj": page_obj})
+    return render(request, "production/raw_materials.html", {
+        "page_obj": page_obj, "factory": factory, "factories": _factories(biz),
+    })
 
 
 @production_staff_required
@@ -460,8 +499,12 @@ def raw_material_toggle_active(request, pk):
 def raw_material_purchase(request, pk):
     biz = request.user.business
     material = get_object_or_404(RawMaterial, pk=pk, business=biz)
+    factory = _current_factory(request)
 
     if request.method == "POST":
+        if not factory:
+            messages.error(request, "No factory to receive this stock — set one up under Branches first.")
+            return redirect("production:raw_materials")
         try:
             quantity = Decimal(request.POST.get("quantity", ""))
             total_cost = Decimal(request.POST.get("total_cost", ""))
@@ -494,7 +537,7 @@ def raw_material_purchase(request, pk):
             amount_paid_now = max(Decimal("0"), min(amount_paid_now, total_cost))
 
         purchase = RawMaterialPurchase.objects.create(
-            raw_material=material, quantity=quantity, total_cost=total_cost,
+            raw_material=material, branch=factory, quantity=quantity, total_cost=total_cost,
             purchase_date=request.POST.get("purchase_date") or date.today(),
             batch_number=request.POST.get("batch_number", "").strip(),
             expiry_date=request.POST.get("expiry_date") or None,
@@ -523,7 +566,7 @@ def raw_material_purchase(request, pk):
         messages.success(request, msg + " It's posted to the books and will show in the Cashbook/Activity.")
         return redirect("production:raw_materials")
 
-    return render(request, "production/raw_material_purchase.html", {"material": material})
+    return render(request, "production/raw_material_purchase.html", {"material": material, "factory": factory})
 
 
 @production_staff_required
@@ -562,17 +605,24 @@ def raw_material_purchase_reverse(request, pk):
 
 @production_staff_required
 def raw_material_movements(request, pk):
+    """Shows every factory's movements for this shared catalog entry —
+    a history/audit view, not an operational one, so it isn't narrowed to
+    the currently active factory the way purchasing/dispensing are."""
     material = get_object_or_404(RawMaterial, pk=pk, business=request.user.business)
+    multi_factory = _factories(request.user.business).count() > 1
     entries = []
-    for p in material.purchases.all():
+    for p in material.purchases.select_related("branch").all():
         entries.append({"date": p.purchase_date, "type": "Purchase", "change": p.quantity,
-                        "ref": p.batch_number or "—", "purchase": p,
+                        "ref": p.batch_number or "—", "purchase": p, "branch": p.branch,
                         "can_reverse": not p.is_reversed and p.remaining_quantity == p.quantity})
-    for d in material.dispensation_set.select_related("batch"):
+    for d in material.dispensation_set.select_related("batch__branch"):
         entries.append({"date": d.batch.date, "type": "Dispensed", "change": -d.quantity_dispensed,
-                        "ref": d.batch.batch_number, "purchase": None, "can_reverse": False})
+                        "ref": d.batch.batch_number, "purchase": None, "branch": d.batch.branch,
+                        "can_reverse": False})
     entries.sort(key=lambda e: e["date"], reverse=True)
-    return render(request, "production/raw_material_movements.html", {"material": material, "entries": entries})
+    return render(request, "production/raw_material_movements.html", {
+        "material": material, "entries": entries, "multi_factory": multi_factory,
+    })
 
 
 # --------------------------------------------------------------- Formulas
@@ -646,6 +696,7 @@ def batch_create(request):
     partial batches), then dispense FEFO — earliest expiry first, falling
     back to purchase date — recording exactly which purchase fed the batch."""
     biz = request.user.business
+    factory = _current_factory(request)
     products, batch_data = [], {}
     for p in Product.objects.filter(business=biz).exclude(status="ARCHIVED").select_related("category"):
         # the most recent APPROVED version is the one that counts — if it's
@@ -659,12 +710,15 @@ def batch_create(request):
             "unit_cost": float(formula.unit_cost()),
             "lines": [
                 {"material": l.raw_material.name, "uom": l.raw_material.unit_of_measure,
-                 "qty_per_unit": float(l.quantity_per_unit), "stock": float(l.raw_material.current_stock())}
+                 "qty_per_unit": float(l.quantity_per_unit), "stock": float(l.raw_material.current_stock(branch=factory))}
                 for l in formula.lines.select_related("raw_material").all()
             ],
         }
 
     if request.method == "POST":
+        if not factory:
+            messages.error(request, "No factory to run this batch — set one up under Branches first.")
+            return redirect("production:batch_create")
         product = get_object_or_404(Product, pk=request.POST.get("product"), business=biz)
         formula = product.formulas.filter(status="APPROVED").order_by("-version").first()
         try:
@@ -677,20 +731,20 @@ def batch_create(request):
         lines = list(formula.lines.select_related("raw_material").all())
         for line in lines:
             needed = line.quantity_per_unit * target
-            if line.raw_material.current_stock() < needed:
+            if line.raw_material.current_stock(branch=factory) < needed:
                 return redirect("production:batch_create")   # shortfall — the live table should have caught this
 
         today = date.today()
         seq = ProductionBatch.objects.filter(business=biz, date=today).count() + 1
         batch = ProductionBatch.objects.create(
-            business=biz, product=product, formula=formula,
+            business=biz, branch=factory, product=product, formula=formula,
             batch_number=f"BATCH{request.user.username[:2].upper()}-{today:%d%m%y}-{seq:02d}",
             date=today, target_quantity=target, status="DISPENSED", created_by=request.user,
         )
         for line in lines:
             needed = line.quantity_per_unit * target
             purchases = RawMaterialPurchase.objects.filter(
-                raw_material=line.raw_material, remaining_quantity__gt=0
+                raw_material=line.raw_material, branch=factory, remaining_quantity__gt=0
             ).order_by(F("expiry_date").asc(nulls_last=True), "purchase_date")
             for purchase in purchases:
                 if needed <= 0:
@@ -707,7 +761,7 @@ def batch_create(request):
         return redirect("production:processing")
 
     return render(request, "production/batch_create.html", {
-        "products": products, "batch_data": batch_data,
+        "products": products, "batch_data": batch_data, "factory": factory, "factories": _factories(biz),
         "preselect_product": request.GET.get("product", ""),   # e.g. arriving from a short stock request
         "preselect_quantity": request.GET.get("quantity", ""),
     })
@@ -757,7 +811,7 @@ def batch_complete(request, pk):
             quantity_notes=request.POST.get("quantity_notes", "").strip(), author=request.user,
         )
 
-        factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+        factory_store = InventoryLocation.objects.filter(business=biz, branch=batch.branch, type="PRODUCTION_STORE").first()
         if factory_store:
             item, _ = StockItem.objects.get_or_create(
                 location=factory_store, product=batch.product,
@@ -776,7 +830,7 @@ def batch_complete(request, pk):
 
 # ------------------------------------------------------------ Stock Requests
 
-def _request_plan(stock_request, factory_store):
+def _request_plan(stock_request, factory_store, factory):
     """For each line of a request: what was asked for, what's already gone
     out, what's still owed, what the factory holds right now, what would ship
     if fulfilled this minute, the shortfall, and the FEFO batches that
@@ -791,8 +845,8 @@ def _request_plan(stock_request, factory_store):
         send_now = min(remaining, available)
         short = remaining - send_now
         batches, left = [], send_now
-        if product:
-            for b in _batches_available(product):
+        if product and factory:
+            for b in _batches_available(product, factory):
                 if left <= 0:
                     break
                 take = min(left, b.remaining_quantity)
@@ -808,13 +862,17 @@ def _request_plan(stock_request, factory_store):
 @production_staff_required
 def stock_request_list(request):
     biz = request.user.business
-    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+    factory = _current_factory(request)
+    factory_store = InventoryLocation.objects.filter(business=biz, branch=factory, type="PRODUCTION_STORE").first() \
+        if factory else None
     requests = StockRequest.objects.filter(business=biz, status__in=("SUBMITTED", "PARTIAL")) \
         .select_related("requester_location__branch", "requester_location__rep") \
         .prefetch_related("distributions__lines__product", "distributions__lines__batch").order_by("created_at")
     for r in requests:
-        r.plan, r.any_shortfall, r.any_sendable = _request_plan(r, factory_store)
-    return render(request, "production/stock_requests.html", {"requests": requests})
+        r.plan, r.any_shortfall, r.any_sendable = _request_plan(r, factory_store, factory)
+    return render(request, "production/stock_requests.html", {
+        "requests": requests, "factory": factory, "factories": _factories(biz),
+    })
 
 
 @production_staff_required
@@ -823,12 +881,14 @@ def stock_request_fulfill(request, pk):
     stock decrement — just sourced from the request's lines instead of a
     hand-picked cart."""
     biz = request.user.business
+    factory = _current_factory(request)
     stock_request = get_object_or_404(StockRequest, pk=pk, business=biz, status__in=("SUBMITTED", "PARTIAL"))
     if request.method != "POST":
         return redirect("production:stock_requests")
 
-    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
-    plan, any_shortfall, any_sendable = _request_plan(stock_request, factory_store)
+    factory_store = InventoryLocation.objects.filter(business=biz, branch=factory, type="PRODUCTION_STORE").first() \
+        if factory else None
+    plan, any_shortfall, any_sendable = _request_plan(stock_request, factory_store, factory)
     if not factory_store or not any_sendable:
         messages.error(request, "Nothing on this request is in the factory store right now — "
                                 "start a new batch first, then come back to it.")
@@ -837,7 +897,7 @@ def stock_request_fulfill(request, pk):
     today = date.today()
     seq = Distribution.objects.filter(business=biz, date=today).count() + 1
     dist = Distribution.objects.create(
-        business=biz, receiver_location=stock_request.requester_location,
+        business=biz, sender_branch=factory, receiver_location=stock_request.requester_location,
         delivery_note_number=f"DN-{request.user.username[:4].upper()}-{today:%d%m%y}-{seq:03d}",
         date=today, status="SENT", created_by=request.user, stock_request=stock_request,
         note=request.POST.get("note", "").strip(),
@@ -863,7 +923,7 @@ def stock_request_fulfill(request, pk):
 
         if product and product.status == "ACTIVE" and send_now > 0:
             store_item = StockItem.objects.filter(location=factory_store, product=product).first()
-            _dispense_finished_goods_fefo(dist, product, send_now)
+            _dispense_finished_goods_fefo(dist, product, send_now, factory)
             store_item.quantity -= send_now
             store_item.save(update_fields=["quantity"])
             StockMovement.objects.create(location=factory_store, product=product, quantity=-send_now,
@@ -900,31 +960,34 @@ def stock_request_fulfill(request, pk):
 @production_staff_required
 def dashboard(request):
     biz = request.user.business
+    factory = _current_factory(request)
     today = date.today()
     materials = list(RawMaterial.objects.filter(business=biz))
     for m in materials:
-        m.stock = m.current_stock()
+        m.stock = m.current_stock(branch=factory)
     low_stock = [m for m in materials if m.stock <= m.reorder_level]
     expiring = RawMaterialPurchase.objects.filter(
-        raw_material__business=biz, remaining_quantity__gt=0,
+        raw_material__business=biz, branch=factory, remaining_quantity__gt=0,
         expiry_date__isnull=False, expiry_date__lte=today + timedelta(days=60),
     ).select_related("raw_material").order_by("expiry_date")[:10]
 
-    factory_store = InventoryLocation.objects.filter(business=biz, type="PRODUCTION_STORE").first()
+    factory_store = InventoryLocation.objects.filter(business=biz, branch=factory, type="PRODUCTION_STORE").first() \
+        if factory else None
     store_items = StockItem.objects.filter(location=factory_store).select_related("product") \
         if factory_store else StockItem.objects.none()
     finished_expiring = ProductionBatch.objects.filter(
-        business=biz, status="COMPLETED", expiry_date__isnull=False, expiry_date__lte=today + timedelta(days=60),
+        business=biz, branch=factory, status="COMPLETED", expiry_date__isnull=False, expiry_date__lte=today + timedelta(days=60),
     ).select_related("product").order_by("expiry_date")[:10]
 
     return render(request, "production/dashboard.html", {
+        "factory": factory, "factories": _factories(biz),
         "low_stock": low_stock,
         "expiring": expiring,
         "finished_expiring": finished_expiring,
         "store_items": store_items,
-        "recent_batches": ProductionBatch.objects.filter(business=biz).order_by("-date", "-id")[:8],
-        "processing_count": ProductionBatch.objects.filter(business=biz, status="DISPENSED").count(),
-        "awaiting_confirmation": Distribution.objects.filter(business=biz, status="SENT").count(),
+        "recent_batches": ProductionBatch.objects.filter(business=biz, branch=factory).order_by("-date", "-id")[:8],
+        "processing_count": ProductionBatch.objects.filter(business=biz, branch=factory, status="DISPENSED").count(),
+        "awaiting_confirmation": Distribution.objects.filter(business=biz, sender_branch=factory, status="SENT").count(),
         "stock_requests_count": StockRequest.objects.filter(business=biz, status__in=("SUBMITTED", "PARTIAL")).count(),
         "awaiting_pricing": Product.objects.filter(business=biz, status="DRAFT").count(),
     })
@@ -935,6 +998,7 @@ def processing_list(request):
     """The queue between dispensing and the finished-goods store: batches
     that have had raw materials drawn but haven't been completed with
     actual output + QA yet."""
-    batches = ProductionBatch.objects.filter(business=request.user.business, status="DISPENSED") \
+    factory = _current_factory(request)
+    batches = ProductionBatch.objects.filter(business=request.user.business, branch=factory, status="DISPENSED") \
         .select_related("product").order_by("date")
     return render(request, "production/processing.html", {"batches": batches})

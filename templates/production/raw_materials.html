@@ -2,10 +2,12 @@
 {% block title %}Raw Materials{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h2>Raw Materials</h2>
+  <h2>Raw Materials{% if factory %} — {{ factory.name }}{% endif %}</h2>
   <span class="spacer"></span>
+  {% include "partials/factory_switcher.html" %}
   <a class="btn" href="{% url 'production:raw_material_create' %}">+ New Material</a>
 </div>
+{% if factories|length > 1 %}<p style="color:var(--muted);font-size:.8rem;margin-top:-.6rem;margin-bottom:.8rem">Stock and cost shown are for {{ factory.name }} — the material list itself is shared across all your factories.</p>{% endif %}
 <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem">
   <input id="rmSearch" type="text" placeholder="Search materials…" oninput="filterMaterials()"
          style="flex:1;min-width:200px;padding:.6rem .8rem;border:1px solid #D7DEE6;border-radius:8px;font-family:inherit">

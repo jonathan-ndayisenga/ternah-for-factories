@@ -2,7 +2,7 @@
 {% block title %}Batch {{ batch.batch_number }}{% endblock %}
 {% block content %}
 <div class="page-head no-print">
-  <h2>Batch {{ batch.batch_number }}</h2>
+  <h2>Batch {{ batch.batch_number }}{% if batch.branch %} — {{ batch.branch.name }}{% endif %}</h2>
   <span class="spacer"></span>
   <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:production_report' %}">&larr; All batches</a>
   <button class="btn" onclick="window.print()">Print</button>

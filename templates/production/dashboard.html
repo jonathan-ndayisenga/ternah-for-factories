@@ -2,7 +2,9 @@
 {% block title %}Production Dashboard{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h2>Production Dashboard</h2>
+  <h2>Production Dashboard{% if factory %} — {{ factory.name }}{% endif %}</h2>
+  <span class="spacer"></span>
+  {% include "partials/factory_switcher.html" %}
 </div>
 
 <div class="grid cards-4">

@@ -27,4 +27,5 @@ urlpatterns = [
     path("batches/<int:pk>/complete/", views.batch_complete, name="batch_complete"),
     path("stock-requests/", views.stock_request_list, name="stock_requests"),
     path("stock-requests/<int:pk>/fulfill/", views.stock_request_fulfill, name="stock_request_fulfill"),
+    path("switch-factory/<int:pk>/", views.switch_factory, name="switch_factory"),
 ]

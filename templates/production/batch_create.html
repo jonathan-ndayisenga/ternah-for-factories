@@ -3,7 +3,10 @@
 {% block content %}
 {{ batch_data|json_script:"batchData" }}
 <div class="card" style="max-width:720px;margin:0 auto">
-  <h2 style="color:var(--ternah-navy);margin-bottom:.5rem">New Batch</h2>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem">
+    <h2 style="color:var(--ternah-navy);margin:0">New Batch{% if factory %} — {{ factory.name }}{% endif %}</h2>
+    {% include "partials/factory_switcher.html" %}
+  </div>
   {% if not products %}
     <p style="color:var(--muted)">No product has an approved formula yet — approve one under Products & Formulas first.</p>
   {% else %}

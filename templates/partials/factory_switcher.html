@@ -1,0 +1,17 @@
+{% comment %}Usage: {% include "partials/factory_switcher.html" %} — needs `factory` and `factories` in
+context (both already returned by every branch-scoped production view). Renders nothing when there's
+only one factory, since there's nothing to choose.{% endcomment %}
+{% if factories and factories|length > 1 %}
+<div class="no-print" style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+  <span style="color:var(--muted);font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Factory</span>
+  {% for f in factories %}
+  <form method="post" action="{% url 'production:switch_factory' f.pk %}" style="display:inline">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <button class="btn ghost" style="padding:.4rem .7rem;min-height:auto;{% if factory.pk == f.pk %}background:var(--ternah-navy);color:#fff{% else %}background:#EDF1F5;color:var(--ternah-navy){% endif %}">
+      {{ f.name }}
+    </button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}

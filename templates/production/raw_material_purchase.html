@@ -3,7 +3,8 @@
 {% block content %}
 <div class="card" style="max-width:560px;margin:0 auto">
   <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">{{ material.name }}</h2>
-  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Record a new purchase batch — tracked separately for FEFO and traceability.</p>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Record a new purchase batch — tracked separately for FEFO and traceability.
+    {% if factory %}Receiving into <strong>{{ factory.name }}</strong>.{% endif %}</p>
   <form method="post" class="stack" onsubmit="return confirmPurchase()">
     {% csrf_token %}
     <label>Quantity ({{ material.unit_of_measure }})</label>

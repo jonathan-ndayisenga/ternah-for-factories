@@ -8,7 +8,7 @@
 </div>
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Date</th><th>Type</th><th>Change</th><th>Reference</th><th></th></tr>
+  <tr><th>Date</th><th>Type</th>{% if multi_factory %}<th>Factory</th>{% endif %}<th>Change</th><th>Reference</th><th></th></tr>
   {% for e in entries %}
   <tr{% if e.purchase.is_reversed %} style="opacity:.5"{% endif %}>
     <td>{{ e.date|date:"d M Y" }}</td>
@@ -16,6 +16,7 @@
       {{ e.type }}
       {% if e.purchase.is_reversed %}<span class="pill locked" style="margin-left:.4rem">Reversed</span>{% endif %}
     </td>
+    {% if multi_factory %}<td>{{ e.branch.name|default:"—" }}</td>{% endif %}
     <td style="color:{% if e.change < 0 %}var(--red){% else %}var(--green){% endif %};font-weight:700">
       {% if e.change > 0 %}+{% endif %}{{ e.change|floatformat:3 }} {{ material.unit_of_measure }}
     </td>
