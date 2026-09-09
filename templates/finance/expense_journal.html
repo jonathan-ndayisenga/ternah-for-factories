@@ -9,7 +9,8 @@
 
 {% include "partials/print_letterhead.html" with print_title=print_title %}
 
-<div class="card no-print" style="margin-bottom:1rem;max-width:640px">
+<div class="no-print" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start;margin-bottom:1rem">
+<div class="card" style="flex:2;min-width:340px">
   <h3>Record Expense</h3>
   <p style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">Capture the channel and exact account used for every expense payout.</p>
   <form method="post" action="{% url 'finance:expense_create' %}" class="stack" onsubmit="return confirmExpense()">
@@ -67,6 +68,11 @@
     <button class="btn" style="margin-top:1.2rem">Record expense</button>
   </form>
 </div>
+<div class="card" style="flex:1;min-width:220px">
+  <h3>Total Expenses</h3>
+  <div class="big" style="color:var(--red)">UGX {{ total|floatformat:0 }}</div>
+</div>
+</div>
 
 <form method="get" class="no-print" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
   <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">From</label>
@@ -77,21 +83,15 @@
   {% if date_from or date_to %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'finance:expense_journal' %}">Clear</a>{% endif %}
 </form>
 
-<div class="grid charts-2">
-  <div class="card">
-    <h3>By Category</h3>
-    {% if category_labels %}
-    {{ category_labels|json_script:"categoryLabels" }}
-    {{ category_totals|json_script:"categoryTotals" }}
-    <div class="chart-wrap"><canvas id="chartByCategory"></canvas></div>
-    {% else %}
-    <p style="color:var(--muted)">No expenses in range.</p>
-    {% endif %}
-  </div>
-  <div class="card">
-    <h3>Total Expenses</h3>
-    <div class="big" style="color:var(--red)">UGX {{ total|floatformat:0 }}</div>
-  </div>
+<div class="card">
+  <h3>By Category</h3>
+  {% if category_labels %}
+  {{ category_labels|json_script:"categoryLabels" }}
+  {{ category_totals|json_script:"categoryTotals" }}
+  <div class="chart-wrap" style="height:340px"><canvas id="chartByCategory"></canvas></div>
+  {% else %}
+  <p style="color:var(--muted)">No expenses in range.</p>
+  {% endif %}
 </div>
 
 <div class="table-scroll" style="margin-top:1rem">
