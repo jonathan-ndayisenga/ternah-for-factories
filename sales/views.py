@@ -551,22 +551,43 @@ def record_payment(request):
         location = _pos_location(request)
         debtor = Debtor.objects.filter(pk=request.POST.get("debtor_id"), location=location).first() if location else None
 
+    if not debtor:
+        messages.error(request, "Couldn't find that debtor — nothing was recorded.")
+        return redirect(next_url)
+
     try:
         amount = Decimal(request.POST.get("amount", ""))
     except InvalidOperation:
         amount = None
-    if debtor and amount and amount > 0:
-        payment = DebtorPayment.objects.create(debtor=debtor, amount=amount, method="CASH", received_by=request.user)
-        post_debtor_payment(payment)
-        remaining = amount
-        for open_sale in debtor.sales.filter(balance__gt=0).order_by("created_at"):
-            if remaining <= 0:
-                break
-            applied = min(remaining, open_sale.balance)
-            open_sale.balance -= applied
-            open_sale.amount_paid += applied
-            open_sale.save(update_fields=["balance", "amount_paid"])
-            remaining -= applied
+    if not amount or amount <= 0:
+        messages.error(request, "Enter a real payment amount.")
+        return redirect(next_url)
+
+    owed = debtor.balance()
+    if amount > owed:
+        messages.error(request, f"That's more than {debtor.name} actually owes (UGX {owed:,.2f}). "
+                                f"Enter an amount up to the balance — nothing was recorded.")
+        return redirect(next_url)
+
+    payment = DebtorPayment.objects.create(debtor=debtor, amount=amount, method="CASH", received_by=request.user)
+    post_debtor_payment(payment)
+    remaining = amount
+    for open_sale in debtor.sales.filter(balance__gt=0).order_by("created_at"):
+        if remaining <= 0:
+            break
+        applied = min(remaining, open_sale.balance)
+        open_sale.balance -= applied
+        open_sale.amount_paid += applied
+        open_sale.save(update_fields=["balance", "amount_paid"])
+        remaining -= applied
+    payment.balance_after = owed - amount
+    payment.save(update_fields=["balance_after"])
+
+    if payment.balance_after <= 0:
+        messages.success(request, f"UGX {amount:,.2f} recorded from {debtor.name} — fully settled, no balance left.")
+    else:
+        messages.success(request, f"UGX {amount:,.2f} recorded from {debtor.name}. "
+                                  f"UGX {payment.balance_after:,.2f} still outstanding.")
     return redirect(next_url)
 
 
@@ -598,7 +619,11 @@ def debtor_payment_receipt(request, pk):
     payment = get_object_or_404(DebtorPayment, pk=pk, debtor__business=request.user.business)
     if not _can_view_location(request, payment.debtor.location):
         raise Http404
+    # snapshotted at payment time so this stays accurate however much later
+    # activity there's been; only a payment from before that snapshot existed
+    # falls back to the debtor's live balance
+    balance_after = payment.balance_after if payment.balance_after is not None else payment.debtor.balance()
     return render(request, "sales/debtor_payment_receipt.html", {
-        "payment": payment, "debtor": payment.debtor, "balance_after": payment.debtor.balance(),
+        "payment": payment, "debtor": payment.debtor, "balance_after": balance_after,
         "print_title": f"Payment Receipt — {payment.debtor.name}",
     })

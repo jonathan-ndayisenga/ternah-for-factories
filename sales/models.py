@@ -127,6 +127,10 @@ class DebtorPayment(TimeStamped):
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     method = models.CharField(max_length=15)
     received_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    # snapshotted at the moment this payment was applied, so a receipt for an
+    # old payment still shows the balance as it stood right then — not the
+    # debtor's live balance, which keeps moving as later payments land
+    balance_after = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
 
 
 class WholesaleOrder(TimeStamped):

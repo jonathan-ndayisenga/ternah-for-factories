@@ -19,11 +19,11 @@
       {% else %}<span class="pill active">{{ row.age_days }} days</span>{% endif %}
     </td>
     <td>
-      <form method="post" action="{% url 'sales:record_payment' %}" style="display:flex;gap:.4rem">
+      <form method="post" action="{% url 'sales:record_payment' %}" style="display:flex;gap:.4rem" onsubmit="return submitDebtorPayment(this, '{{ row.debtor.name|escapejs }}', {{ row.balance }})">
         {% csrf_token %}
         <input type="hidden" name="next" value="{% url 'manager:debtors' %}">
         <input type="hidden" name="debtor_id" value="{{ row.debtor.id }}">
-        <input name="amount" type="number" min="1" style="width:100px;padding:.4rem .6rem;border:1px solid #D7DEE6;border-radius:8px" required>
+        <input name="amount" type="number" min="1" max="{{ row.balance }}" style="width:100px;padding:.4rem .6rem;border:1px solid #D7DEE6;border-radius:8px" required>
         <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">Pay</button>
       </form>
     </td>
@@ -33,4 +33,19 @@
 </table>
 </div>
 {% include "partials/pagination.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function submitDebtorPayment(form, debtorName, balance) {
+  const amountInput = form.querySelector('input[name="amount"]');
+  const amount = parseFloat(amountInput.value) || 0;
+  if (amount <= 0) return false;
+  if (!confirm(`Record UGX ${amount.toLocaleString()} paid by ${debtorName}?\n\nCurrent balance: UGX ${balance.toLocaleString()}.`)) return false;
+  const btn = form.querySelector("button");
+  btn.disabled = true;
+  btn.textContent = "Recording…";
+  return true;
+}
+</script>
 {% endblock %}
