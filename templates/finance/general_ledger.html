@@ -11,6 +11,44 @@
 
 <p style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">Every posted double-entry — the real accounting journal, not the activity feed. Each entry always balances: total debits = total credits.</p>
 
+<div class="card no-print" style="margin-bottom:1rem">
+  <h3>Post a manual entry</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">For anything the automatic postings above don't cover — a true opening balance, a one-off correction. Picks straight from the fixed chart of accounts; posts immediately, and — like everything else here — corrections after the fact are a new reversing entry, not an edit.</p>
+  <form method="post" action="{% url 'finance:manual_journal_entry' %}" class="stack"
+        onsubmit="return confirmManualEntry()">
+    {% csrf_token %}
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <label>Debit account</label>
+        <select name="debit_account" id="debitAccount" required>
+          <option value="">Select account…</option>
+          {% for code, name, type in account_defs %}<option value="{{ code }}">{{ code }} — {{ name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <label>Credit account</label>
+        <select name="credit_account" id="creditAccount" required>
+          <option value="">Select account…</option>
+          {% for code, name, type in account_defs %}<option value="{{ code }}">{{ code }} — {{ name }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:.8rem">
+      <div style="flex:1;min-width:160px">
+        <label>Amount (UGX)</label>
+        <input type="number" name="amount" id="manualAmount" step="0.01" min="0.01" required>
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label>Date</label>
+        <input type="date" name="date" value="{{ today|date:'Y-m-d' }}">
+      </div>
+    </div>
+    <label style="margin-top:.8rem">Memo <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input type="text" name="memo" id="manualMemo" placeholder="What is this entry for?">
+    <button class="btn" style="margin-top:1rem">Post entry</button>
+  </form>
+</div>
+
 {% for e in page_obj %}
 <div class="card" style="margin-bottom:.75rem">
   <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:.4rem">
@@ -38,4 +76,16 @@
 {% endfor %}
 {% include "partials/pagination.html" %}
 {% include "partials/print_footer.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function confirmManualEntry() {
+  const debit = document.getElementById("debitAccount").selectedOptions[0];
+  const credit = document.getElementById("creditAccount").selectedOptions[0];
+  const amount = document.getElementById("manualAmount").value;
+  if (!debit.value || !credit.value || !amount) return true;   // let required-field validation handle it
+  return confirm(`Post this entry?\n\nDr ${debit.textContent.trim()}   UGX ${amount}\nCr ${credit.textContent.trim()}   UGX ${amount}\n\nThis posts immediately — a mistake needs a reversing entry afterward, not an edit.`);
+}
+</script>
 {% endblock %}

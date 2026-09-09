@@ -29,7 +29,7 @@ from core.models import Branch
 from production.models import Distribution, RawMaterialPurchase
 from sales.models import BankAccount, DailyOpeningBalance, DebtorPayment, Expense, MomoAccount, PendingAction, Sale, SaleItem
 from .models import Invoice, InvoiceClient, InvoiceLine, InvoicePayment, JournalEntry, JournalLine, LedgerAccount, Supplier
-from .services import get_accounts, post_capital_transaction, post_invoice, post_invoice_payment, void_invoice
+from .services import ACCOUNT_DEFS, get_accounts, post_capital_transaction, post_invoice, post_invoice_payment, post_manual_entry, void_invoice
 
 finance_staff_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER"))
 owner_required = user_passes_test(lambda u: u.is_authenticated and u.role == "OWNER")
@@ -228,7 +228,48 @@ def general_ledger(request):
         entries = entries.filter(branch=request.user.branch)
     page_obj, extra_qs = _paginate(request, entries, page_size=15)
     print_title = "General Ledger" + (f" — {request.user.branch.name}" if request.user.role == "MANAGER" else "")
-    return render(request, "finance/general_ledger.html", {"page_obj": page_obj, "extra_qs": extra_qs, "print_title": print_title})
+    return render(request, "finance/general_ledger.html", {
+        "page_obj": page_obj, "extra_qs": extra_qs, "print_title": print_title, "account_defs": ACCOUNT_DEFS,
+        "today": timezone.localdate(),
+    })
+
+
+@login_required
+@finance_staff_required
+def manual_journal_entry(request):
+    """A straight debit/credit correcting entry, picked from the fixed chart
+    of accounts — for whatever the automated postings above don't cover
+    (a true opening balance, a one-off correction). Posted for the manager's
+    own branch, or business-wide for the owner, same as everything else here."""
+    if request.method != "POST":
+        return redirect("finance:general_ledger")
+    accounts = get_accounts(request.user.business)
+    debit_code = request.POST.get("debit_account")
+    credit_code = request.POST.get("credit_account")
+    if debit_code not in accounts or credit_code not in accounts:
+        messages.error(request, "Pick both a debit and a credit account.")
+        return redirect("finance:general_ledger")
+    if debit_code == credit_code:
+        messages.error(request, "The debit and credit account can't be the same — nothing would actually move.")
+        return redirect("finance:general_ledger")
+    try:
+        amount = Decimal(request.POST.get("amount", ""))
+    except InvalidOperation:
+        messages.error(request, "Enter a real amount.")
+        return redirect("finance:general_ledger")
+    if amount <= 0:
+        messages.error(request, "Amount must be greater than zero.")
+        return redirect("finance:general_ledger")
+
+    entry_date = request.POST.get("date") or timezone.localdate()
+    memo = request.POST.get("memo", "").strip()
+    branch = request.user.branch if request.user.role == "MANAGER" else None
+    post_manual_entry(request.user.business, branch, entry_date, debit_code, credit_code, amount, memo, request.user)
+
+    debit_name = accounts[debit_code].name
+    credit_name = accounts[credit_code].name
+    messages.success(request, f"Posted: UGX {amount:,.2f} — Dr {debit_code} {debit_name}, Cr {credit_code} {credit_name}.")
+    return redirect("finance:general_ledger")
 
 
 @login_required

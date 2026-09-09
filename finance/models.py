@@ -119,7 +119,8 @@ class JournalEntry(TimeStamped):
                ("OUTLET_TRANSFER_OUT", "Outlet transfer (sent)"), ("OUTLET_TRANSFER_IN", "Outlet transfer (received)"),
                ("COGS_CORRECTION", "Cost of goods sold — correction"),
                ("INVOICE_AR", "Invoice raised to client"), ("INVOICE_AR_PAYMENT", "Invoice payment received"),
-               ("INVOICE_AP", "Supplier bill recorded"), ("INVOICE_AP_PAYMENT", "Supplier bill paid")]
+               ("INVOICE_AP", "Supplier bill recorded"), ("INVOICE_AP_PAYMENT", "Supplier bill paid"),
+               ("MANUAL", "Manual journal entry")]
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
     branch = models.ForeignKey("core.Branch", null=True, blank=True, on_delete=models.SET_NULL)  # branch P&L
     number = models.CharField(max_length=40, blank=True)      # JNL{INITIALS}-DDMMYY-SEQ

@@ -242,6 +242,19 @@ def void_invoice(invoice, actor=None):
                 f"reversal:invoice:{invoice.pk}", memo, lines, actor=actor)
 
 
+def post_manual_entry(business, branch, date, debit_account, credit_account, amount, memo, actor):
+    """A straight two-line correcting entry, picked by the manager/owner
+    themselves — for anything that doesn't fit one of the built-in flows
+    above (e.g. a true opening balance, a correction the automated posting
+    doesn't cover). Always its own fresh entry, never idempotent against a
+    repeat call the way the automatic post_* functions are — there's no
+    natural source event here to dedupe against."""
+    accounts = get_accounts(business)
+    ref = f"manual:{business.pk}:{timezone.now():%Y%m%d%H%M%S%f}"
+    lines = [(accounts[debit_account], amount, 0), (accounts[credit_account], 0, amount)]
+    return _post(business, branch, date, "MANUAL", ref, memo or "Manual journal entry", lines, actor=actor)
+
+
 def post_batch_completion(batch):
     accounts = get_accounts(batch.business)
     memo = f"{batch.batch_number} completed — {batch.actual_quantity} units"

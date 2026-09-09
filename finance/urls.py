@@ -6,6 +6,7 @@ urlpatterns = [
     path("cashbook/", views.cashbook, name="cashbook"),
     path("journal/", views.journal, name="journal"),
     path("general-ledger/", views.general_ledger, name="general_ledger"),
+    path("general-ledger/post/", views.manual_journal_entry, name="manual_journal_entry"),
     path("expense-journal/", views.expense_journal, name="expense_journal"),
     path("reports/", views.financial_reports, name="financial_reports"),
     path("reports/capital/", views.record_capital, name="record_capital"),
