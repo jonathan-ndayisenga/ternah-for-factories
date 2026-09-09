@@ -540,7 +540,7 @@ def record_payment(request):
     currently acting as that rep still needs to be able to pay one down."""
     next_url = request.POST.get("next", "")
     if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
-        next_url = "sales:pos"
+        next_url = reverse("sales:pos")
     if request.method != "POST":
         return redirect(next_url)
 
@@ -589,7 +589,11 @@ def record_payment(request):
     else:
         messages.success(request, f"UGX {amount:,.2f} recorded from {debtor.name}. "
                                   f"UGX {payment.balance_after:,.2f} still outstanding.")
-    return redirect(next_url)
+    # land on the receipt itself (not back where they came from) — it's
+    # where the Reverse button lives, so a mistake caught right away is one
+    # click away instead of needing a manager to dig up the payment first
+    receipt_url = reverse("sales:debtor_payment_receipt", args=[payment.pk])
+    return redirect(f"{receipt_url}?next={next_url}")
 
 
 def _can_view_location(request, location):
@@ -624,9 +628,12 @@ def debtor_payment_receipt(request, pk):
     # activity there's been; only a payment from before that snapshot existed
     # falls back to the debtor's live balance
     balance_after = payment.balance_after if payment.balance_after is not None else payment.debtor.balance()
+    back_url = request.GET.get("next", "")
+    if not url_has_allowed_host_and_scheme(back_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        back_url = ""
     return render(request, "sales/debtor_payment_receipt.html", {
         "payment": payment, "debtor": payment.debtor, "balance_after": balance_after,
-        "can_reverse": payment.can_reverse(),
+        "can_reverse": payment.can_reverse(), "back_url": back_url,
         "print_title": f"Payment Receipt — {payment.debtor.name}",
     })
 

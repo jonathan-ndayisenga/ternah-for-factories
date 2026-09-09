@@ -4,6 +4,7 @@
 <div class="page-head no-print">
   <h2>Payment Receipt{% if payment.is_reversed %} — Reversed{% endif %}</h2>
   <span class="spacer"></span>
+  {% if back_url %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{{ back_url }}">&larr; Back</a>{% endif %}
   <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
 </div>
 
