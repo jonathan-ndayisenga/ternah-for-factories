@@ -8,6 +8,33 @@
 {% if not location %}
 <div class="card"><p style="color:var(--muted)">No inventory location is set up for you yet.</p></div>
 {% else %}
+
+{% if pending %}
+<div class="card" style="margin-bottom:1rem;background:#FDEBD0">
+  <h3 style="color:var(--amber)">Awaiting your confirmation</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">These have been sent to you but aren't in your stock yet — confirm once you've actually got them in hand, or dispute if something's off.</p>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Delivery Note</th><th>Items</th><th></th></tr>
+    {% for d in pending %}
+    <tr>
+      <td>{{ d.date|date:"d M Y" }}</td>
+      <td>{{ d.delivery_note_number }}</td>
+      <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        <form method="post" action="{% url 'sales:received_item_confirm' d.pk %}" style="display:inline-flex;gap:.4rem">
+          {% csrf_token %}
+          <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto" onclick="return confirm('Confirm you\'ve received {{ d.delivery_note_number|escapejs }}? It will be added to your stock, ready to sell.')">Confirm</button>
+          <button class="btn ghost" name="action" value="dispute" style="padding:.4rem .7rem;min-height:auto;background:#FADBD8;color:var(--red)" onclick="return confirm('Dispute {{ d.delivery_note_number|escapejs }}? It stays flagged until sorted out with your manager — nothing lands in your stock.')">Dispute</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="table-scroll">
 <table class="list">
   <tr><th>Date</th><th>Product</th><th>Quantity</th><th>Batch</th><th>Delivery Note</th><th>Your selling price</th></tr>

@@ -25,6 +25,7 @@
   {% for t in tiles %}
   <a class="tile" href="{{ t.href }}">
     {% if t.key == "production" and pending_stock_requests %}<span class="tile-badge">{{ pending_stock_requests }}</span>{% endif %}
+    {% if t.key == "sales_rep" and pending_deliveries %}<span class="tile-badge">{{ pending_deliveries }}</span>{% endif %}
     <div class="tile-icon">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{{ t.icon|safe }}</svg>
     </div>

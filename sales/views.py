@@ -387,10 +387,15 @@ def record_opening_balance(request):
 def received_items(request):
     """A rep's own view of what's landed in their inventory over time — date,
     product, quantity, and the price they're meant to sell it at (their
-    manager-assigned tiers, priced per the manager's product pricing)."""
+    manager-assigned tiers, priced per the manager's product pricing).
+    Also the rep's own confirm/dispute step — before this, only Owner/
+    Manager/Production could land a distribution addressed to a rep, and
+    a rep's personal location doesn't reliably show up on any manager's
+    branch-scoped Inventory page, so a delivery could sit stuck at "Sent"
+    indefinitely with nobody able to see it needed confirming."""
     location = _pos_location(request)
     allowed = _allowed_tiers(request)
-    lines = []
+    lines, pending = [], []
     if location:
         lines = list(DistributionLine.objects.filter(distribution__receiver_location=location,
                                                       distribution__status="RECEIVED")
@@ -401,7 +406,48 @@ def received_items(request):
                 for code, label in PRICE_TIERS
                 if code in allowed and code != "CUSTOM" and line.product.price_for_tier(code) is not None
             ]
-    return render(request, "sales/received_items.html", {"location": location, "lines": lines})
+        pending = list(Distribution.objects.filter(receiver_location=location, status="SENT")
+                      .prefetch_related("lines__product").order_by("date"))
+    return render(request, "sales/received_items.html", {"location": location, "lines": lines, "pending": pending})
+
+
+@login_required
+def received_item_confirm(request, pk):
+    """A rep confirming (or disputing) a delivery addressed to their own
+    personal inventory — same landing logic as production.distribution_confirm,
+    but self-service since nobody else may ever see this one to confirm it
+    for them (see received_items' note above)."""
+    if _acting_role(request) != "SALES_REP":
+        return redirect("home")
+    location = _pos_location(request)
+    dist = get_object_or_404(Distribution, pk=pk, receiver_location=location, status="SENT")
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "confirm":
+            factory_store = InventoryLocation.objects.filter(
+                business=dist.business, branch=dist.sender_branch, type="PRODUCTION_STORE").first()
+            for line in dist.lines.select_related("product"):
+                source_cost = StockItem.objects.filter(
+                    location=factory_store, product=line.product).values_list("buying_price", flat=True).first() or 0
+                item, _ = StockItem.objects.get_or_create(
+                    location=dist.receiver_location, product=line.product,
+                    defaults={"buying_price": source_cost, "selling_price": 0},
+                )
+                item.quantity += line.quantity
+                item.buying_price = source_cost
+                item.save(update_fields=["quantity", "buying_price"])
+                StockMovement.objects.create(location=dist.receiver_location, product=line.product, quantity=line.quantity,
+                                             reason="DISTRIBUTION", reference=dist.delivery_note_number,
+                                             moved_by=request.user, counterparty=factory_store)
+            dist.status = "RECEIVED"
+            dist.confirmed_by = request.user
+            dist.save(update_fields=["status", "confirmed_by"])
+            messages.success(request, f"{dist.delivery_note_number} confirmed — it's now in your stock, ready to sell.")
+        elif action == "dispute":
+            dist.status = "DISPUTED"
+            dist.save(update_fields=["status"])
+            messages.error(request, f"{dist.delivery_note_number} marked disputed — flag it with your manager to sort out.")
+    return redirect("sales:received_items")
 
 
 @login_required
@@ -460,6 +506,29 @@ def stock_request_create(request):
         "location": location, "active_products": active_products, "my_requests": my_requests,
         "mode_choices": StockRequest.MODES,
     })
+
+
+@login_required
+def stock_request_cancel(request, pk):
+    """Only while nothing on it has shipped yet (status SUBMITTED, every line
+    still at fulfilled=0) — same 'clean undo before anything downstream
+    happened' rule as reversing a raw material purchase. Once Production has
+    sent any of it, cancelling would mean unwinding a real distribution
+    instead, so it's blocked outright rather than half-cancelling."""
+    if _acting_role(request) != "SALES_REP":
+        return redirect("home")
+    location = _pos_location(request)
+    stock_request = get_object_or_404(StockRequest, pk=pk, requester_location=location)
+    if request.method == "POST":
+        if stock_request.status != "SUBMITTED":
+            messages.error(request, "This request has already moved — only a request nothing has shipped against yet can be cancelled.")
+        elif any(int(l.get("fulfilled", 0) or 0) > 0 for l in stock_request.lines):
+            messages.error(request, "Some of this request has already been sent — it can't be cancelled anymore.")
+        else:
+            stock_request.status = "REJECTED"
+            stock_request.save(update_fields=["status"])
+            messages.success(request, "Stock request cancelled.")
+    return redirect("sales:stock_request_create")
 
 
 @login_required

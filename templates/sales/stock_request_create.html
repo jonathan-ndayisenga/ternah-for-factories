@@ -40,7 +40,7 @@
   <h3>Your requests</h3>
   <div class="table-scroll" style="margin-top:.5rem">
   <table class="list">
-    <tr><th>Date</th><th>Items</th><th>Status</th></tr>
+    <tr><th>Date</th><th>Items</th><th>Status</th><th></th></tr>
     {% for r in my_requests %}
     <tr>
       <td>{{ r.created_at|date:"d M Y, H:i" }}</td>
@@ -56,10 +56,20 @@
         {% if r.status == "SUBMITTED" %}<span class="pill warning">Awaiting Production</span>
         {% elif r.status == "PARTIAL" %}<span class="pill warning">Partly sent — rest on order</span>
         {% elif r.status == "FULFILLED" %}<span class="pill active">Fulfilled</span>
+        {% elif r.status == "REJECTED" %}<span class="pill locked">Cancelled</span>
         {% else %}<span class="pill locked">{{ r.get_status_display }}</span>{% endif %}
       </td>
+      <td>
+        {% if r.status == "SUBMITTED" %}
+        <form method="post" action="{% url 'sales:stock_request_cancel' r.pk %}"
+              onsubmit="return confirm('Cancel this request? Nothing has shipped against it yet, so this removes it from Production\'s queue entirely.')">
+          {% csrf_token %}
+          <button class="btn ghost" style="background:#FDECEA;color:var(--red);padding:.4rem .7rem;min-height:auto">Cancel</button>
+        </form>
+        {% endif %}
+      </td>
     </tr>
-    {% empty %}<tr><td colspan="3" style="color:var(--muted)">You haven't requested any stock yet.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="4" style="color:var(--muted)">You haven't requested any stock yet.</td></tr>{% endfor %}
   </table>
   </div>
 </div>
