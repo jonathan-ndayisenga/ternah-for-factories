@@ -8,6 +8,7 @@ urlpatterns = [
     path("general-ledger/", views.general_ledger, name="general_ledger"),
     path("general-ledger/post/", views.manual_journal_entry, name="manual_journal_entry"),
     path("expense-journal/", views.expense_journal, name="expense_journal"),
+    path("expense-journal/new/", views.expense_create, name="expense_create"),
     path("reports/", views.financial_reports, name="financial_reports"),
     path("reports/capital/", views.record_capital, name="record_capital"),
     path("payment-accounts/", views.payment_accounts, name="payment_accounts"),

@@ -133,9 +133,12 @@ def reverse_debtor_payment(payment, actor=None):
 def post_expense(expense):
     accounts = get_accounts(expense.business)
     memo = expense.category + (f" — {expense.note}" if expense.note else "")
+    # INVOICE_PAYMENT_ACCOUNT_CODES is defined further down but that's fine —
+    # module-level names resolve at call time, not definition order
+    pay_account = accounts[INVOICE_PAYMENT_ACCOUNT_CODES.get(expense.payment_method, "1000")]
     return _post(expense.business, expense.location.branch, expense.date, "EXPENSE",
                 f"expense:{expense.pk}", memo,
-                [(accounts["5100"], expense.amount, 0), (accounts["1000"], 0, expense.amount)],
+                [(accounts["5100"], expense.amount, 0), (pay_account, 0, expense.amount)],
                 actor=expense.recorded_by)
 
 

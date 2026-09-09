@@ -165,6 +165,7 @@ class WholesaleOrder(TimeStamped):
 
 
 class Expense(TimeStamped):
+    METHODS = [("CASH", "Cash"), ("MOBILE_MONEY", "Mobile Money"), ("BANK", "Bank")]
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
     location = models.ForeignKey(InventoryLocation, on_delete=models.PROTECT, related_name="expenses")
     category = models.CharField(max_length=60)
@@ -172,6 +173,11 @@ class Expense(TimeStamped):
     note = models.CharField(max_length=200, blank=True)
     date = models.DateField()
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    # which till/account it actually came out of — defaults to Cash so every
+    # expense recorded before this existed (always assumed cash) stays correct
+    payment_method = models.CharField(max_length=15, choices=METHODS, default="CASH")
+    paid_from_momo = models.ForeignKey(MomoAccount, null=True, blank=True, on_delete=models.SET_NULL)
+    paid_from_bank = models.ForeignKey(BankAccount, null=True, blank=True, on_delete=models.SET_NULL)
 
 
 class StockRequest(TimeStamped):

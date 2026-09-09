@@ -18,6 +18,13 @@ from django.utils import timezone
 
 PAGE_SIZE = 25
 
+# Suggestions only, offered via a <datalist> — category is free text, so
+# anything typed that isn't in this list is fine too.
+EXPENSE_CATEGORY_SUGGESTIONS = [
+    "Rent", "Salaries", "Utilities", "Transport", "Maintenance", "Supplies",
+    "Airtime & Data", "Fuel", "Security", "Cleaning", "Other",
+]
+
 
 def _paginate(request, items, page_size=PAGE_SIZE):
     page_obj = Paginator(items, page_size).get_page(request.GET.get("page"))
@@ -27,9 +34,14 @@ def _paginate(request, items, page_size=PAGE_SIZE):
 
 from core.models import Branch
 from production.models import Distribution, RawMaterialPurchase
-from sales.models import BankAccount, DailyOpeningBalance, DebtorPayment, Expense, MomoAccount, PendingAction, Sale, SaleItem
+from sales.models import (
+    BankAccount, DailyOpeningBalance, DebtorPayment, Expense, InventoryLocation, MomoAccount, PendingAction, Sale, SaleItem,
+)
 from .models import Invoice, InvoiceClient, InvoiceLine, InvoicePayment, JournalEntry, JournalLine, LedgerAccount, Supplier
-from .services import ACCOUNT_DEFS, get_accounts, post_capital_transaction, post_invoice, post_invoice_payment, post_manual_entry, void_invoice
+from .services import (
+    ACCOUNT_DEFS, get_accounts, post_capital_transaction, post_expense, post_invoice, post_invoice_payment,
+    post_manual_entry, void_invoice,
+)
 
 finance_staff_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER"))
 owner_required = user_passes_test(lambda u: u.is_authenticated and u.role == "OWNER")
@@ -105,7 +117,7 @@ def cashbook(request):
                         "receipt_url": reverse("sales:debtor_payment_receipt", args=[p.pk])})
     for e in Expense.objects.filter(business=biz, **branch_filter).select_related("recorded_by"):
         entries.append({"sort_date": e.date, "when": _as_datetime(e.date), "type": "Expense",
-                        "ref": e.category, "method": "—", "amount": -e.amount, "by": e.recorded_by})
+                        "ref": e.category, "method": e.get_payment_method_display(), "amount": -e.amount, "by": e.recorded_by})
     if request.user.role == "OWNER":
         # raw material purchases aren't tied to any one branch — they only
         # belong in the business-wide (Owner) cashbook, and only the ones
@@ -293,7 +305,58 @@ def expense_journal(request):
     return render(request, "finance/expense_journal.html", {
         "page_obj": page_obj, "extra_qs": extra_qs, "total": total, "by_category": by_category,
         "date_from": date_from, "date_to": date_to, "print_title": print_title,
+        "branches": Branch.objects.filter(business=biz, kind="OUTLET", is_active=True).order_by("name") if request.user.role == "OWNER" else None,
+        "momo_accounts": MomoAccount.objects.filter(business=biz, is_active=True),
+        "bank_accounts": BankAccount.objects.filter(business=biz, is_active=True),
+        "category_suggestions": EXPENSE_CATEGORY_SUGGESTIONS,
+        "today": timezone.localdate(),
     })
+
+
+@login_required
+@finance_staff_required
+def expense_create(request):
+    if request.method != "POST":
+        return redirect("finance:expense_journal")
+    biz = request.user.business
+
+    if request.user.role == "MANAGER":
+        location = InventoryLocation.objects.filter(branch=request.user.branch, type="OUTLET").first()
+    else:
+        branch = Branch.objects.filter(pk=request.POST.get("branch"), business=biz, kind="OUTLET").first()
+        location = InventoryLocation.objects.filter(branch=branch, type="OUTLET").first() if branch else None
+    if not location:
+        messages.error(request, "Pick a branch to charge this expense against — nothing was recorded.")
+        return redirect("finance:expense_journal")
+
+    category = request.POST.get("category", "").strip()
+    try:
+        amount = Decimal(request.POST.get("amount", ""))
+    except InvalidOperation:
+        amount = None
+    if not category or not amount or amount <= 0:
+        messages.error(request, "A category and a real amount are both required — nothing was recorded.")
+        return redirect("finance:expense_journal")
+
+    method = request.POST.get("payment_method")
+    if method not in dict(Expense.METHODS):
+        method = "CASH"
+    momo_account = None
+    if method == "MOBILE_MONEY":
+        momo_account = MomoAccount.objects.filter(pk=request.POST.get("momo_account"), business=biz, is_active=True).first()
+    bank_account = None
+    if method == "BANK":
+        bank_account = BankAccount.objects.filter(pk=request.POST.get("bank_account"), business=biz, is_active=True).first()
+
+    expense = Expense.objects.create(
+        business=biz, location=location, category=category, amount=amount,
+        note=request.POST.get("note", "").strip(), date=request.POST.get("date") or timezone.localdate(),
+        recorded_by=request.user, payment_method=method,
+        paid_from_momo=momo_account, paid_from_bank=bank_account,
+    )
+    post_expense(expense)
+    messages.success(request, f"UGX {amount:,.2f} recorded under {category} — posted to the books.")
+    return redirect("finance:expense_journal")
 
 
 def _account_balance(balances, account):

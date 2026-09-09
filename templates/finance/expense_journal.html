@@ -9,6 +9,65 @@
 
 {% include "partials/print_letterhead.html" with print_title=print_title %}
 
+<div class="card no-print" style="margin-bottom:1rem;max-width:640px">
+  <h3>Record Expense</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">Capture the channel and exact account used for every expense payout.</p>
+  <form method="post" action="{% url 'finance:expense_create' %}" class="stack" onsubmit="return confirmExpense()">
+    {% csrf_token %}
+    <div style="display:flex;gap:1rem;flex-wrap:wrap">
+      <div style="flex:1;min-width:160px">
+        <label>Date</label>
+        <input type="date" name="date" value="{{ today|date:'Y-m-d' }}" required>
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label>Amount (UGX)</label>
+        <input type="number" name="amount" id="expenseAmount" step="0.01" min="0.01" required>
+      </div>
+    </div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:.8rem">
+      <div style="flex:1;min-width:160px">
+        <label>Category</label>
+        <input type="text" name="category" id="expenseCategory" list="categoryList" placeholder="e.g. Rent, Transport…" required>
+        <datalist id="categoryList">{% for c in category_suggestions %}<option value="{{ c }}">{% endfor %}</datalist>
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label>Description <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input type="text" name="note" placeholder="What was this for?">
+      </div>
+    </div>
+
+    {% if branches %}
+    <label style="margin-top:.8rem">Branch</label>
+    <select name="branch" required>
+      <option value="">Select branch…</option>
+      {% for b in branches %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+    </select>
+    {% endif %}
+
+    <label style="margin-top:.8rem">Paid from</label>
+    <select name="payment_method" id="expenseMethod" onchange="toggleExpenseAccountFields()">
+      <option value="CASH">Cash</option>
+      <option value="MOBILE_MONEY" {% if not momo_accounts %}disabled{% endif %}>Mobile Money{% if not momo_accounts %} (no account set up){% endif %}</option>
+      <option value="BANK" {% if not bank_accounts %}disabled{% endif %}>Bank{% if not bank_accounts %} (no account set up){% endif %}</option>
+    </select>
+
+    <div id="expenseMomoField" style="display:none;margin-top:.6rem">
+      <label>Mobile Money account</label>
+      <select name="momo_account">
+        {% for a in momo_accounts %}<option value="{{ a.id }}">{{ a.provider }} — {{ a.number }}</option>{% endfor %}
+      </select>
+    </div>
+    <div id="expenseBankField" style="display:none;margin-top:.6rem">
+      <label>Bank account</label>
+      <select name="bank_account">
+        {% for a in bank_accounts %}<option value="{{ a.id }}">{{ a.bank_name }} — {{ a.account_name }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <button class="btn" style="margin-top:1.2rem">Record expense</button>
+  </form>
+</div>
+
 <form method="get" class="no-print" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
   <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">From</label>
     <input name="from" type="date" value="{{ date_from }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
@@ -38,19 +97,38 @@
 
 <div class="table-scroll" style="margin-top:1rem">
 <table class="list">
-  <tr><th>Date</th><th>Category</th><th>Note</th><th>Branch</th><th>Amount</th><th>Recorded by</th></tr>
+  <tr><th>Date</th><th>Category</th><th>Note</th><th>Branch</th><th>Paid From</th><th>Amount</th><th>Recorded by</th></tr>
   {% for e in page_obj %}
   <tr>
     <td>{{ e.date|date:"d M Y" }}</td>
     <td>{{ e.category }}</td>
     <td style="color:var(--muted)">{{ e.note|default:"—" }}</td>
     <td>{{ e.location.branch.name }}</td>
+    <td style="color:var(--muted);font-size:.85rem">
+      {{ e.get_payment_method_display }}{% if e.paid_from_momo %} — {{ e.paid_from_momo.provider }} {{ e.paid_from_momo.number }}{% endif %}{% if e.paid_from_bank %} — {{ e.paid_from_bank.bank_name }} {{ e.paid_from_bank.account_name }}{% endif %}
+    </td>
     <td style="color:var(--red);font-weight:700">UGX {{ e.amount|floatformat:0 }}</td>
     <td>{{ e.recorded_by.username|default:"—" }}</td>
   </tr>
-  {% empty %}<tr><td colspan="6" style="color:var(--muted)">No expenses recorded.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="7" style="color:var(--muted)">No expenses recorded.</td></tr>{% endfor %}
 </table>
 </div>
 {% include "partials/pagination.html" %}
 {% include "partials/print_footer.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleExpenseAccountFields() {
+  const method = document.getElementById("expenseMethod").value;
+  document.getElementById("expenseMomoField").style.display = method === "MOBILE_MONEY" ? "block" : "none";
+  document.getElementById("expenseBankField").style.display = method === "BANK" ? "block" : "none";
+}
+function confirmExpense() {
+  const amount = document.getElementById("expenseAmount").value;
+  const category = document.getElementById("expenseCategory").value;
+  const method = document.getElementById("expenseMethod").options[document.getElementById("expenseMethod").selectedIndex].text;
+  return confirm(`Record this expense?\n\nUGX ${amount} — ${category}\nPaid from: ${method}\n\nThis posts straight to the books.`);
+}
+</script>
 {% endblock %}
