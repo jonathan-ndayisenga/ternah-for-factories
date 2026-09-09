@@ -42,9 +42,10 @@
   <table class="list">
     <tr><th>Date</th><th>Amount</th><th>Method</th><th>Received by</th><th></th></tr>
     {% for p in payments %}
-    <tr>
+    <tr{% if p.is_reversed %} style="opacity:.5"{% endif %}>
       <td>{{ p.created_at|date:"d M Y, H:i" }}</td>
-      <td style="color:var(--green);font-weight:700">UGX {{ p.amount|floatformat:0 }}</td>
+      <td style="color:var(--green);font-weight:700">UGX {{ p.amount|floatformat:0 }}
+        {% if p.is_reversed %}<span class="pill locked" style="margin-left:.4rem">Reversed</span>{% endif %}</td>
       <td>{{ p.method }}</td>
       <td>{{ p.received_by.username|default:"—" }}</td>
       <td><a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy);padding:.35rem .7rem" href="{% url 'sales:debtor_payment_receipt' p.pk %}">Receipt</a></td>

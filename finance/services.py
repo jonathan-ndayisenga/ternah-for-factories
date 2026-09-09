@@ -114,6 +114,22 @@ def post_debtor_payment(payment):
                 actor=payment.received_by)
 
 
+def reverse_debtor_payment(payment, actor=None):
+    """A mechanical reversal — same technique as reverse_raw_material_purchase:
+    flip every line of the original entry. The caller enforces the real
+    safety rule (only the debtor's most recent, not-already-reversed
+    payment) — this just undoes the ledger side once that's already true."""
+    business = payment.debtor.business
+    original = JournalEntry.objects.filter(business=business,
+                                           source_ref=f"debtor_payment:{payment.pk}").prefetch_related("lines").first()
+    if not original:
+        return None
+    memo = f"Reversal — payment from {payment.debtor.name}"
+    lines = [(l.ledger_account, l.credit, l.debit) for l in original.lines.all()]
+    return _post(business, payment.debtor.location.branch, timezone.now().date(), "REVERSAL",
+                f"reversal:debtor_payment:{payment.pk}", memo, lines, actor=actor)
+
+
 def post_expense(expense):
     accounts = get_accounts(expense.business)
     memo = expense.category + (f" — {expense.note}" if expense.note else "")

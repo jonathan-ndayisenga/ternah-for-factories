@@ -13,10 +13,10 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from accounts.models import PRICE_TIERS
-from finance.services import post_debtor_payment, post_expense, post_outlet_transfer_expense, post_sale
+from finance.services import post_debtor_payment, post_expense, post_outlet_transfer_expense, post_sale, reverse_debtor_payment
 from production.models import Distribution, DistributionLine, Product
 from .models import (
-    BankAccount, DailyOpeningBalance, Debtor, DebtorPayment, Expense, InventoryLocation,
+    BankAccount, DailyOpeningBalance, Debtor, DebtorPayment, DebtorPaymentAllocation, Expense, InventoryLocation,
     MomoAccount, OutletTransfer, OutletTransferLine, Sale, SaleItem, StockItem, StockMovement, StockRequest,
 )
 
@@ -579,6 +579,7 @@ def record_payment(request):
         open_sale.balance -= applied
         open_sale.amount_paid += applied
         open_sale.save(update_fields=["balance", "amount_paid"])
+        DebtorPaymentAllocation.objects.create(payment=payment, sale=open_sale, amount=applied)
         remaining -= applied
     payment.balance_after = owed - amount
     payment.save(update_fields=["balance_after"])
@@ -625,5 +626,47 @@ def debtor_payment_receipt(request, pk):
     balance_after = payment.balance_after if payment.balance_after is not None else payment.debtor.balance()
     return render(request, "sales/debtor_payment_receipt.html", {
         "payment": payment, "debtor": payment.debtor, "balance_after": balance_after,
+        "can_reverse": payment.can_reverse(),
         "print_title": f"Payment Receipt — {payment.debtor.name}",
     })
+
+
+@login_required
+def debtor_payment_reverse(request, pk):
+    """Undo a data-entry mistake — a wrong amount typed in — rather than
+    editing the payment. Only the debtor's most recent payment, and only
+    once: reversing an older one out of order, with newer payments already
+    layered on top of it, would leave the per-sale balances impossible to
+    reconstruct cleanly, so that's blocked outright."""
+    payment = get_object_or_404(DebtorPayment, pk=pk, debtor__business=request.user.business)
+    if not _can_view_location(request, payment.debtor.location):
+        raise Http404
+    next_url = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        next_url = reverse("sales:debtor_payment_receipt", args=[payment.pk])
+    if request.method != "POST":
+        return redirect(next_url)
+
+    if not payment.can_reverse():
+        if payment.is_reversed:
+            messages.error(request, "This payment was already reversed.")
+        elif not payment.allocations.exists():
+            messages.error(request, "This payment predates reversal tracking, so there's no record of exactly "
+                                    "which sale(s) it paid down — it can't be reversed automatically. "
+                                    "Post a manual correcting entry instead.")
+        else:
+            messages.error(request, "Only the debtor's most recent payment can be reversed — a newer payment "
+                                    "has already been recorded since this one.")
+        return redirect(next_url)
+
+    for alloc in payment.allocations.select_related("sale"):
+        sale = alloc.sale
+        sale.balance += alloc.amount
+        sale.amount_paid -= alloc.amount
+        sale.save(update_fields=["balance", "amount_paid"])
+    reverse_debtor_payment(payment, actor=request.user)
+    payment.is_reversed = True
+    payment.save(update_fields=["is_reversed"])
+    messages.success(request, f"Reversed: UGX {payment.amount:,.2f} from {payment.debtor.name}. "
+                              f"A correcting entry was posted to the books — now record the correct payment.")
+    return redirect(next_url)

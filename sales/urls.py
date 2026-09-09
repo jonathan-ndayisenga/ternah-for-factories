@@ -16,4 +16,5 @@ urlpatterns = [
     path("outlet-transfers/<int:pk>/confirm/", views.outlet_transfer_confirm, name="outlet_transfer_confirm"),
     path("receipt/<int:pk>/", views.receipt, name="receipt"),
     path("payment-receipt/<int:pk>/", views.debtor_payment_receipt, name="debtor_payment_receipt"),
+    path("payment-receipt/<int:pk>/reverse/", views.debtor_payment_reverse, name="debtor_payment_reverse"),
 ]

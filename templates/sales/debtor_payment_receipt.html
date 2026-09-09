@@ -2,7 +2,7 @@
 {% block title %}Payment Receipt{% endblock %}
 {% block content %}
 <div class="page-head no-print">
-  <h2>Payment Receipt</h2>
+  <h2>Payment Receipt{% if payment.is_reversed %} — Reversed{% endif %}</h2>
   <span class="spacer"></span>
   <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" onclick="window.print()">Print</button>
 </div>
@@ -11,6 +11,11 @@
 {% include "partials/receipt_print_style.html" %}
 
 <div class="card" style="max-width:560px;margin:0 auto">
+  {% if payment.is_reversed %}
+  <div class="no-print" style="background:#FDECEA;color:var(--red);padding:.6rem .9rem;border-radius:8px;font-weight:600;font-size:.9rem;margin-bottom:1rem">
+    This payment was reversed — it no longer counts against {{ debtor.name }}'s balance.
+  </div>
+  {% endif %}
   <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid #EDF1F5">
     <div>
       <p style="color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.4px;font-weight:700">Received from</p>
@@ -36,8 +41,16 @@
       UGX {{ balance_after|floatformat:0 }}
     </span>
   </div>
-  {% if balance_after <= 0 %}
+  {% if balance_after <= 0 and not payment.is_reversed %}
     <p style="text-align:center;color:var(--green);font-weight:600;font-size:.9rem;margin-top:.5rem">Fully settled — no outstanding balance.</p>
+  {% endif %}
+
+  {% if can_reverse %}
+  <form method="post" action="{% url 'sales:debtor_payment_reverse' payment.pk %}" class="no-print" style="margin-top:1.2rem;text-align:center"
+        onsubmit="return confirm('Reverse this UGX {{ payment.amount|floatformat:0 }} payment from {{ debtor.name|escapejs }}? Their balance goes back up by that amount and a correcting entry is posted to the books. Only works because no other payment has been recorded since this one.')">
+    {% csrf_token %}
+    <button class="btn ghost" style="background:#FDECEA;color:var(--red)">Reverse this payment</button>
+  </form>
   {% endif %}
 </div>
 

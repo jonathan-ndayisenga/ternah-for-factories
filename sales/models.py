@@ -131,6 +131,27 @@ class DebtorPayment(TimeStamped):
     # old payment still shows the balance as it stood right then — not the
     # debtor's live balance, which keeps moving as later payments land
     balance_after = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    is_reversed = models.BooleanField(default=False)   # a data-entry error, corrected by reversal + a fresh payment
+
+    def can_reverse(self):
+        """Only the debtor's most recent payment, only once, and only if it
+        left a paper trail of which sale(s) it actually touched (payments
+        recorded before this feature existed have no allocations to reverse
+        precisely) — same 'clean undo before anything else changed' rule as
+        reversing a raw material purchase."""
+        if self.is_reversed or not self.allocations.exists():
+            return False
+        latest = self.debtor.payments.order_by("-created_at", "-id").first()
+        return latest is not None and latest.pk == self.pk
+
+
+class DebtorPaymentAllocation(models.Model):
+    """Exactly which sale(s) a payment paid down, and by how much — recorded
+    at payment time so a reversal can undo precisely this payment's effect,
+    not guess at it from the debtor's current (possibly since-changed) state."""
+    payment = models.ForeignKey(DebtorPayment, on_delete=models.CASCADE, related_name="allocations")
+    sale = models.ForeignKey("Sale", on_delete=models.PROTECT, related_name="debtor_payment_allocations")
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
 
 
 class WholesaleOrder(TimeStamped):
