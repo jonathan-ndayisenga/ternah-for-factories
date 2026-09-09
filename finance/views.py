@@ -300,10 +300,13 @@ def expense_journal(request):
     qs = qs.order_by("-date", "-id")
     total = qs.aggregate(s=Sum("amount"))["s"] or Decimal("0")
     by_category = qs.values("category").annotate(total=Sum("amount")).order_by("-total")
+    category_labels = [c["category"] for c in by_category]
+    category_totals = [float(c["total"]) for c in by_category]
     page_obj, extra_qs = _paginate(request, qs)
     print_title = "Expense Journal" + (f" — {request.user.branch.name}" if request.user.role == "MANAGER" else "")
     return render(request, "finance/expense_journal.html", {
-        "page_obj": page_obj, "extra_qs": extra_qs, "total": total, "by_category": by_category,
+        "page_obj": page_obj, "extra_qs": extra_qs, "total": total,
+        "category_labels": category_labels, "category_totals": category_totals,
         "date_from": date_from, "date_to": date_to, "print_title": print_title,
         "branches": Branch.objects.filter(business=biz, kind="OUTLET", is_active=True).order_by("name") if request.user.role == "OWNER" else None,
         "momo_accounts": MomoAccount.objects.filter(business=biz, is_active=True),
