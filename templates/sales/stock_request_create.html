@@ -13,6 +13,7 @@
   <p style="color:var(--muted);font-size:.9rem;margin-bottom:.75rem">Quantities shown are what's currently sitting in the factory store, so you know what's realistic to ask for. This creates a request in Production's queue — it becomes a real delivery once they fulfil it.</p>
   <form method="post" class="stack" id="requestForm">
     {% csrf_token %}
+    <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
     <div id="cartRows">
       <div class="cart-row">
         <select name="product" class="req-product" required>

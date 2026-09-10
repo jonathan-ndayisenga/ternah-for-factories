@@ -1,6 +1,7 @@
 """Point of sale — identical shape at an outlet (cashier) or in a rep's own
 inventory (sales rep): today's sales, ring up a sale, log an expense, collect
 a debtor payment. Every sale records who it was sold to, cash or credit."""
+import uuid
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -65,6 +66,7 @@ def pos(request):
     context = {
         "location": location, "tier_labels": dict(PRICE_TIERS), "allowed_tiers": allowed_tiers,
         "momo_accounts": momo_accounts, "bank_accounts": bank_accounts,
+        "sale_idempotency_key": uuid.uuid4().hex, "expense_idempotency_key": uuid.uuid4().hex,
     }
     if location:
         today = timezone.localdate()
@@ -96,6 +98,8 @@ def pos(request):
         qd_expenses = qd_base.copy(); qd_expenses["panel"] = "expenses"
         sales_page = Paginator(today_sales, 15).get_page(request.GET.get("sales_page"))
         debtors_page = Paginator(debtors, 15).get_page(request.GET.get("debtors_page"))
+        for d in debtors_page:
+            d.idempotency_key = uuid.uuid4().hex
         expenses_page = Paginator(today_expenses, 15).get_page(request.GET.get("expenses_page"))
 
         context.update({
@@ -124,6 +128,16 @@ def record_sale(request):
     location = _pos_location(request)
     if request.method != "POST" or not location:
         return redirect("sales:pos")
+
+    # a field retry (poor network, a double-tap) resubmits the exact same
+    # hidden key — recognise it and hand back the original receipt instead
+    # of ringing the same sale up (and decrementing stock) a second time
+    idempotency_key = request.POST.get("idempotency_key", "").strip()
+    if idempotency_key:
+        existing = Sale.objects.filter(business=request.user.business, idempotency_key=idempotency_key).first()
+        if existing:
+            messages.success(request, "This sale was already recorded — here's the receipt.")
+            return redirect("sales:receipt", pk=existing.pk)
 
     customer_name = request.POST.get("customer_name", "").strip()
     method = request.POST.get("payment_method")
@@ -236,6 +250,7 @@ def record_sale(request):
         payment_method=method, customer_name=customer_name, customer_phone=customer_phone,
         paid_into_momo=momo_account, paid_into_bank=bank_account,
         debtor=debtor, subtotal=subtotal, total=subtotal, amount_paid=amount_paid, balance=balance,
+        idempotency_key=idempotency_key,
     )
     transfer = None
     movement_reference = receipt
@@ -348,6 +363,10 @@ def outlet_transfer_confirm(request, pk):
 def record_expense(request):
     location = _pos_location(request)
     if request.method == "POST" and location:
+        idempotency_key = request.POST.get("idempotency_key", "").strip()
+        if idempotency_key and Expense.objects.filter(business=request.user.business, idempotency_key=idempotency_key).exists():
+            messages.success(request, "That expense was already recorded.")
+            return redirect(f"{reverse('sales:pos')}?panel=expenses")
         category = request.POST.get("category", "").strip()
         try:
             amount = Decimal(request.POST.get("amount", ""))
@@ -357,7 +376,7 @@ def record_expense(request):
             expense = Expense.objects.create(
                 business=request.user.business, location=location, category=category,
                 amount=amount, note=request.POST.get("note", "").strip(),
-                date=timezone.localdate(), recorded_by=request.user)
+                date=timezone.localdate(), recorded_by=request.user, idempotency_key=idempotency_key)
             post_expense(expense)
     return redirect(f"{reverse('sales:pos')}?panel=expenses")
 
@@ -474,6 +493,10 @@ def stock_request_create(request):
         p.available_at_factory = stock_by_product.get(p.id, 0)
 
     if request.method == "POST" and location:
+        idempotency_key = request.POST.get("idempotency_key", "").strip()
+        if idempotency_key and StockRequest.objects.filter(requester_location=location, idempotency_key=idempotency_key).exists():
+            messages.success(request, "That request was already sent to Production.")
+            return redirect("sales:stock_request_create")
         lines = []
         for pid, qty in zip(request.POST.getlist("product"), request.POST.getlist("quantity")):
             try:
@@ -489,7 +512,7 @@ def stock_request_create(request):
         mode = mode if mode in dict(StockRequest.MODES) else "WAIT"
         if lines:
             StockRequest.objects.create(business=biz, requester_location=location, status="SUBMITTED",
-                                        fulfillment_mode=mode, lines=lines)
+                                        fulfillment_mode=mode, lines=lines, idempotency_key=idempotency_key)
             messages.success(request, "Stock request sent to Production.")
         else:
             messages.error(request, "Add at least one product with a quantity to request.")
@@ -504,7 +527,7 @@ def stock_request_create(request):
         ]
     return render(request, "sales/stock_request_create.html", {
         "location": location, "active_products": active_products, "my_requests": my_requests,
-        "mode_choices": StockRequest.MODES,
+        "mode_choices": StockRequest.MODES, "idempotency_key": uuid.uuid4().hex,
     })
 
 
@@ -555,6 +578,14 @@ def record_payment(request):
         messages.error(request, "Couldn't find that debtor — nothing was recorded.")
         return redirect(next_url)
 
+    idempotency_key = request.POST.get("idempotency_key", "").strip()
+    if idempotency_key:
+        existing = DebtorPayment.objects.filter(debtor=debtor, idempotency_key=idempotency_key).first()
+        if existing:
+            messages.success(request, "This payment was already recorded — here's the receipt.")
+            receipt_url = reverse("sales:debtor_payment_receipt", args=[existing.pk])
+            return redirect(f"{receipt_url}?next={next_url}")
+
     try:
         amount = Decimal(request.POST.get("amount", ""))
     except InvalidOperation:
@@ -569,7 +600,8 @@ def record_payment(request):
                                 f"Enter an amount up to the balance — nothing was recorded.")
         return redirect(next_url)
 
-    payment = DebtorPayment.objects.create(debtor=debtor, amount=amount, method="CASH", received_by=request.user)
+    payment = DebtorPayment.objects.create(debtor=debtor, amount=amount, method="CASH", received_by=request.user,
+                                           idempotency_key=idempotency_key)
     post_debtor_payment(payment)
     remaining = amount
     for open_sale in debtor.sales.filter(balance__gt=0).order_by("created_at"):

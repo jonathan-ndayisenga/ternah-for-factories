@@ -2,6 +2,8 @@
 the owner: no models of its own, just a branch-locked lens over Product
 (production), Sale/Debtor/PendingAction/StockItem (sales). Every query here
 is scoped to request.user.branch — a manager never sees another branch."""
+import uuid
+
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import F
@@ -52,6 +54,8 @@ def debtors(request):
         rows.append({"debtor": d, "balance": balance, "age_days": age_days})
     rows.sort(key=lambda r: -r["age_days"])
     page_obj = Paginator(rows, 25).get_page(request.GET.get("page"))
+    for row in page_obj:
+        row["idempotency_key"] = uuid.uuid4().hex
     return render(request, "manager/debtors.html", {"page_obj": page_obj})
 
 

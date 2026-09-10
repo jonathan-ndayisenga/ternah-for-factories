@@ -111,6 +111,11 @@ class Sale(TimeStamped):
     total = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     amount_paid = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     balance = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    # one fresh value per page load, resubmitted unchanged if the same form
+    # fires twice (a network retry in the field, a double-tap) — lets the
+    # view recognise and no-op the repeat instead of ringing up the same
+    # sale (and decrementing stock) a second time
+    idempotency_key = models.CharField(max_length=40, blank=True, db_index=True)
 
 
 class SaleItem(models.Model):
@@ -132,6 +137,7 @@ class DebtorPayment(TimeStamped):
     # debtor's live balance, which keeps moving as later payments land
     balance_after = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
     is_reversed = models.BooleanField(default=False)   # a data-entry error, corrected by reversal + a fresh payment
+    idempotency_key = models.CharField(max_length=40, blank=True, db_index=True)
 
     def can_reverse(self):
         """Only the debtor's most recent payment, only once, and only if it
@@ -178,6 +184,7 @@ class Expense(TimeStamped):
     payment_method = models.CharField(max_length=15, choices=METHODS, default="CASH")
     paid_from_momo = models.ForeignKey(MomoAccount, null=True, blank=True, on_delete=models.SET_NULL)
     paid_from_bank = models.ForeignKey(BankAccount, null=True, blank=True, on_delete=models.SET_NULL)
+    idempotency_key = models.CharField(max_length=40, blank=True, db_index=True)
 
 
 class StockRequest(TimeStamped):
@@ -194,6 +201,7 @@ class StockRequest(TimeStamped):
     status = models.CharField(max_length=10, choices=STATUS, default="DRAFT")
     fulfillment_mode = models.CharField(max_length=15, choices=MODES, default="WAIT")
     lines = models.JSONField(default=list)           # [{product_id, quantity, fulfilled, dropped}]
+    idempotency_key = models.CharField(max_length=40, blank=True, db_index=True)
 
     def line_progress(self):
         """Per line: requested, sent so far, still outstanding."""

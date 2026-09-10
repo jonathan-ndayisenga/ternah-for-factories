@@ -23,6 +23,7 @@
         {% csrf_token %}
         <input type="hidden" name="next" value="{% url 'manager:debtors' %}">
         <input type="hidden" name="debtor_id" value="{{ row.debtor.id }}">
+        <input type="hidden" name="idempotency_key" value="{{ row.idempotency_key }}">
         <input name="amount" type="number" min="1" max="{{ row.balance }}" value="{{ row.balance|floatformat:0 }}" onfocus="this.select()" style="width:100px;padding:.4rem .6rem;border:1px solid #D7DEE6;border-radius:8px" required>
         <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">Pay</button>
       </form>

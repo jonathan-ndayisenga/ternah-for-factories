@@ -135,6 +135,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{% url 'sales:pos' %}">
                 <input type="hidden" name="debtor_id" value="{{ d.id }}">
+                <input type="hidden" name="idempotency_key" value="{{ d.idempotency_key }}">
                 <input name="amount" type="number" min="1" max="{{ d.balance }}" value="{{ d.balance|floatformat:0 }}" onfocus="this.select()" style="width:100px;padding:.4rem .6rem;border:1px solid #D7DEE6;border-radius:8px" required>
                 <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)">Pay</button>
               </form>
@@ -160,6 +161,7 @@
       <div class="stat-panel-inner">
         <form method="post" action="{% url 'sales:record_expense' %}" class="stack" style="margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid #EDF1F5">
           {% csrf_token %}
+          <input type="hidden" name="idempotency_key" value="{{ expense_idempotency_key }}">
           <label>Category</label>
           <input name="category" required placeholder="e.g. Transport, Airtime">
           <label>Amount (UGX)</label>
@@ -195,6 +197,7 @@
     <h3>New Sale</h3>
     <form method="post" action="{% url 'sales:record_sale' %}" id="saleForm" class="stack" onsubmit="return validateSaleForm()">
       {% csrf_token %}
+      <input type="hidden" name="idempotency_key" value="{{ sale_idempotency_key }}">
       {{ tier_labels|json_script:"tierLabels" }}
       {{ product_data|json_script:"productData" }}
       <div id="cartRows">
@@ -406,8 +409,14 @@ function validateSaleForm() {
   });
   if (!ok) {
     alert("You're trying to sell/send more of a product than you have in stock. Please adjust the quantities.");
+    return false;
   }
-  return ok;
+  // belt-and-braces alongside the server-side idempotency check — stops a
+  // second tap (or a slow network making it look like nothing happened)
+  // from firing the same sale twice before the first request even returns
+  const btn = document.querySelector('#saleForm button[type="submit"]');
+  if (btn) { btn.disabled = true; btn.textContent = "Recording…"; }
+  return true;
 }
 document.addEventListener("DOMContentLoaded", function () {
   toggleCustomerRequired();
