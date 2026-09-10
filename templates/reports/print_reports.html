@@ -26,9 +26,9 @@
   <table class="list">
     <tr><th>Date</th><th>Receipt</th><th>Customer</th><th>Items</th><th>Branch</th><th>Method</th><th>Total</th><th>Balance</th></tr>
     {% for s in sales %}
-    <tr>
+    <tr{% if s.is_reversed %} style="opacity:.5"{% endif %}>
       <td>{{ s.created_at|date:"d M Y" }}</td>
-      <td>{{ s.receipt_number }}</td>
+      <td>{{ s.receipt_number }}{% if s.is_reversed %} <span class="pill locked">Reversed</span>{% endif %}</td>
       <td>{{ s.customer_name|default:"—" }}</td>
       <td>{% for line in s.items.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
       <td>{{ s.location.branch.name }}</td>

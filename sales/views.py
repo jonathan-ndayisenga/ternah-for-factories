@@ -112,7 +112,7 @@ def pos(request):
             "sales_extra_qs": qd_sales.urlencode(),
             "debtors_extra_qs": qd_debtors.urlencode(),
             "expenses_extra_qs": qd_expenses.urlencode(),
-            "today_total": sum((s.total for s in today_sales), Decimal("0")),
+            "today_total": sum((s.total for s in today_sales if not s.is_reversed), Decimal("0")),
             "debtor_total": sum((d.balance() for d in debtors), Decimal("0")),
             "expense_total": sum((e.amount for e in today_expenses), Decimal("0")),
             "open_panel": request.GET.get("panel", ""),

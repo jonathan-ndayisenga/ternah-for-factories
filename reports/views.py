@@ -59,7 +59,7 @@ def stats_cards(request):
         return factory_stats_cards(request, branch)
 
     biz, today = _biz(request), timezone.localdate()
-    sales = _branch_filter(request, Sale.objects.filter(business=biz))
+    sales = _branch_filter(request, Sale.objects.filter(business=biz, is_reversed=False))
     month = sales.filter(created_at__date__gte=today.replace(day=1))
     gp = SaleItem.objects.filter(sale__in=month).aggregate(
         p=Sum(ExpressionWrapper(F("line_total") - F("quantity") * F("unit_cost"),
@@ -123,7 +123,7 @@ def factory_snapshot(request):
 def chart_daily_sales(request):
     """Line — last 30 days of sales, the owner's pulse."""
     biz, today = _biz(request), timezone.localdate()
-    qs = _branch_filter(request, Sale.objects.filter(business=biz,
+    qs = _branch_filter(request, Sale.objects.filter(business=biz, is_reversed=False,
                         created_at__date__gte=today - timedelta(days=29)))
     by_day = {r["created_at__date"]: r["s"] for r in
               qs.values("created_at__date").annotate(s=Sum("total"))}
@@ -135,7 +135,7 @@ def chart_daily_sales(request):
 @login_required
 def chart_sales_by_branch(request):
     """Bar — which outlet is pulling its weight (reps roll up under their branch)."""
-    qs = _branch_filter(request, Sale.objects.filter(business=_biz(request))) \
+    qs = _branch_filter(request, Sale.objects.filter(business=_biz(request), is_reversed=False)) \
         .values("location__branch__name").annotate(s=Sum("total"))
     return JsonResponse({"labels": [r["location__branch__name"] for r in qs],
                          "data": [float(r["s"]) for r in qs]})
@@ -144,7 +144,7 @@ def chart_sales_by_branch(request):
 @login_required
 def chart_top_reps(request):
     """Horizontal bar — top 5 sales people by revenue."""
-    qs = _branch_filter(request, Sale.objects.filter(business=_biz(request), location__type="REP")) \
+    qs = _branch_filter(request, Sale.objects.filter(business=_biz(request), is_reversed=False, location__type="REP")) \
         .values("location__rep__username").annotate(s=Sum("total")).order_by("-s")[:5]
     return JsonResponse({"labels": [r["location__rep__username"] for r in qs],
                          "data": [float(r["s"]) for r in qs]})
@@ -153,7 +153,7 @@ def chart_top_reps(request):
 @login_required
 def chart_payment_split(request):
     """Doughnut — cash vs card vs momo vs credit."""
-    qs = _branch_filter(request, Sale.objects.filter(business=_biz(request))) \
+    qs = _branch_filter(request, Sale.objects.filter(business=_biz(request), is_reversed=False)) \
         .values("payment_method").annotate(s=Sum("total"))
     return JsonResponse({"labels": [r["payment_method"] for r in qs],
                          "data": [float(r["s"]) for r in qs]})
@@ -188,7 +188,7 @@ def print_reports(request):
     return render(request, "reports/print_reports.html", {
         "branches": biz.branches.all(), "sales": sales, "expenses": expenses, "debtors": debtors,
         "start": start, "end": end,
-        "sales_total": sales.aggregate(s=Sum("total"))["s"] or 0,
+        "sales_total": sales.exclude(is_reversed=True).aggregate(s=Sum("total"))["s"] or 0,
         "expenses_total": expenses.aggregate(s=Sum("amount"))["s"] or 0,
         "print_title": f"Report — {start} to {end} · {scope}",
     })
@@ -199,8 +199,8 @@ def chart_monthly_gp(request):
     """Bar pair — 12 months of revenue vs gross profit (COGS = production cost)."""
     biz, today = _biz(request), timezone.localdate()
     start = (today.replace(day=1) - timedelta(days=365)).replace(day=1)
-    items = _branch_filter(request, SaleItem.objects.filter(sale__business=biz, sale__created_at__date__gte=start),
-                           path="sale__location__branch")
+    items = _branch_filter(request, SaleItem.objects.filter(sale__business=biz, sale__is_reversed=False,
+                           sale__created_at__date__gte=start), path="sale__location__branch")
     rows = items.annotate(m=F("sale__created_at__month"), y=F("sale__created_at__year")) \
         .values("y", "m").annotate(rev=Sum("line_total"),
                                    gp=Sum(ExpressionWrapper(F("line_total") - F("quantity") * F("unit_cost"),
@@ -278,7 +278,7 @@ def rep_outlet_performance(request):
     date_from = request.GET.get("from", "")
     date_to = request.GET.get("to", "")
 
-    sales_qs = Sale.objects.filter(business=biz, location__type__in=("OUTLET", "REP"))
+    sales_qs = Sale.objects.filter(business=biz, is_reversed=False, location__type__in=("OUTLET", "REP"))
     if date_from:
         sales_qs = sales_qs.filter(created_at__date__gte=date_from)
     if date_to:
@@ -327,7 +327,7 @@ def product_receipts(request, pk):
     date_from = request.GET.get("from", "")
     date_to = request.GET.get("to", "")
 
-    items = SaleItem.objects.filter(product=product, sale__business=biz) \
+    items = SaleItem.objects.filter(product=product, sale__business=biz, sale__is_reversed=False) \
         .select_related("sale", "sale__location__branch", "sale__served_by").order_by("-sale__created_at")
     if date_from:
         items = items.filter(sale__created_at__date__gte=date_from)
