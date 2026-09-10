@@ -118,6 +118,25 @@ def cashbook(request):
     for e in Expense.objects.filter(business=biz, **branch_filter).select_related("recorded_by"):
         entries.append({"sort_date": e.date, "when": _as_datetime(e.date), "type": "Expense",
                         "ref": e.category, "method": e.get_payment_method_display(), "amount": -e.amount, "by": e.recorded_by})
+
+    # a reversal (sale, raw material purchase, invoice, debt payment — any of
+    # them) is a real, dated cash event just like the thing it undid, so it
+    # belongs here too — read straight off the ledger since that's the only
+    # place a reversal's own cash effect actually lives
+    cash_codes = {"1000": "Cash", "1010": "Mobile Money", "1020": "Bank"}
+    reversal_branch_filter = {"branch": request.user.branch} if request.user.role == "MANAGER" else {}
+    for je in JournalEntry.objects.filter(business=biz, source="REVERSAL", **reversal_branch_filter) \
+            .prefetch_related("lines__ledger_account").select_related("posted_by"):
+        cash_net, methods = Decimal("0"), set()
+        for l in je.lines.all():
+            code = l.ledger_account.code
+            if code in cash_codes:
+                cash_net += l.debit - l.credit
+                methods.add(cash_codes[code])
+        if cash_net != 0:
+            entries.append({"sort_date": je.date, "when": _as_datetime(je.date), "type": "Reversal",
+                            "ref": je.memo, "method": "/".join(sorted(methods)), "amount": cash_net, "by": je.posted_by})
+
     if request.user.role == "OWNER":
         # raw material purchases aren't tied to any one branch — they only
         # belong in the business-wide (Owner) cashbook, and only the ones
@@ -221,6 +240,21 @@ def journal(request):
                 "description": f"{rm.quantity} {rm.raw_material.unit_of_measure} of {rm.raw_material.name} — {paid}{supplier_bit}",
                 "amount": -rm.total_cost, "by": rm.recorded_by,
             })
+
+    # every reversal — sale, RM purchase, invoice, debt payment — is its own
+    # dated event, same as everywhere else this feed reads from
+    reversal_qs = JournalEntry.objects.filter(business=biz, source="REVERSAL").prefetch_related("lines").select_related("posted_by")
+    if branch:
+        reversal_qs = reversal_qs.filter(branch=branch)
+    for je in reversal_qs:
+        # no single signed "amount" makes sense generically here — reversing
+        # a purchase brings cash back in, reversing a payment received sends
+        # it back out; Cashbook above already works out the real cash
+        # direction per entry, this is just the descriptive log line
+        entries.append({
+            "sort_date": je.date, "when": _as_datetime(je.date), "type": "Reversal",
+            "description": je.memo, "amount": None, "by": je.posted_by,
+        })
 
     entries.sort(key=lambda x: x["sort_date"], reverse=True)
     page_obj, extra_qs = _paginate(request, entries)

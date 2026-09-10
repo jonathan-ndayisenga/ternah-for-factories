@@ -4,15 +4,18 @@ the owner: no models of its own, just a branch-locked lens over Product
 is scoped to request.user.branch — a manager never sees another branch."""
 import uuid
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import F
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
+from finance.services import reverse_sale
 from production.models import Distribution, Product
 from sales.models import (
-    Debtor, DebtorPayment, InventoryLocation, OutletTransfer, PendingAction, StockItem, StockMovement,
+    Debtor, DebtorPayment, DebtorPaymentAllocation, InventoryLocation, OutletTransfer, PendingAction, Sale,
+    StockItem, StockMovement,
 )
 
 manager_required = user_passes_test(lambda u: u.is_authenticated and u.role == "MANAGER")
@@ -80,21 +83,55 @@ def approvals(request):
         business=request.user.business, status="PENDING", requested_by__branch=branch
     ).select_related("requested_by").order_by("created_at")
     for action in actions:
-        action.payload_display = [(k.replace("_", " ").title(), v) for k, v in action.payload.items()]
+        action.payload_display = [(k.replace("_", " ").title(), v) for k, v in action.payload.items() if k != "sale_id"]
     return render(request, "manager/approvals.html", {"actions": actions})
+
+
+def _execute_sale_reversal(action, manager):
+    """The real effect, only run once a manager (never whoever rang up the
+    sale) approves: stock physically goes back on the shelf, and the books
+    get a proper reversing entry — nothing about the original sale is
+    edited or deleted, matching every other reversal in this app."""
+    sale = Sale.objects.filter(pk=action.payload.get("sale_id"), business=action.business).select_related("location").first()
+    if not sale:
+        return False, "That sale no longer exists."
+    if sale.is_reversed:
+        return False, "This sale was already reversed."
+    if sale.payment_method == "OUTLET_TRANSFER":
+        return False, "An outlet transfer can't be reversed this way."
+    if sale.debtor_id and DebtorPaymentAllocation.objects.filter(sale=sale).exists():
+        return False, "A payment has already landed against this sale's debt — that needs sorting out first."
+
+    for item in sale.items.select_related("product"):
+        stock_item, _ = StockItem.objects.get_or_create(
+            location=sale.location, product=item.product, defaults={"buying_price": item.unit_cost, "selling_price": 0})
+        stock_item.quantity += item.quantity
+        stock_item.save(update_fields=["quantity"])
+        StockMovement.objects.create(location=sale.location, product=item.product, quantity=item.quantity,
+                                     reason="RETURN", reference=sale.receipt_number, moved_by=manager,
+                                     counterparty_name=sale.customer_name)
+    reverse_sale(sale, actor=manager)
+    sale.is_reversed = True
+    if sale.payment_method == "CREDIT":
+        sale.balance = 0
+    sale.save(update_fields=["is_reversed", "balance"])
+    return True, f"{sale.receipt_number} reversed — stock is back and the books have a correcting entry."
 
 
 @login_required
 @manager_required
 def approval_decide(request, pk):
-    """Records the decision. Doesn't yet execute the operational effect (stock
-    swap, refund) — nothing creates these requests yet, so there's no real
-    payload shape to act on. That lands with the cashier-side initiation flow."""
     action = get_object_or_404(PendingAction, pk=pk, business=request.user.business,
                                status="PENDING", requested_by__branch=request.user.branch)
     if request.method == "POST":
         decision = request.POST.get("decision")
         if decision == "approve":
+            if action.action_type == "SALE_REVERSAL":
+                ok, msg = _execute_sale_reversal(action, request.user)
+                if not ok:
+                    messages.error(request, msg)
+                    return redirect("manager:approvals")
+                messages.success(request, msg)
             action.status = "APPROVED"
         elif decision == "reject":
             action.status = "REJECTED"

@@ -18,7 +18,8 @@ from finance.services import post_debtor_payment, post_expense, post_outlet_tran
 from production.models import Distribution, DistributionLine, Product
 from .models import (
     BankAccount, DailyOpeningBalance, Debtor, DebtorPayment, DebtorPaymentAllocation, Expense, InventoryLocation,
-    MomoAccount, OutletTransfer, OutletTransferLine, Sale, SaleItem, StockItem, StockMovement, StockRequest,
+    MomoAccount, OutletTransfer, OutletTransferLine, PendingAction, Sale, SaleItem, StockItem, StockMovement,
+    StockRequest,
 )
 
 POS_ROLES = ("CASHIER", "SALES_REP")
@@ -649,6 +650,39 @@ def receipt(request, pk):
         "sale": sale, "items": sale.items.select_related("product"),
         "print_title": f"Receipt {sale.receipt_number}",
     })
+
+
+@login_required
+def sale_reversal_request(request, pk):
+    """A cashier/rep flagging a sale rung up in error — doesn't undo
+    anything itself, just files a request for their manager to approve
+    (manager:approval_decide is what actually restores stock and reverses
+    the books, once someone other than whoever made the mistake has looked
+    at it)."""
+    sale = get_object_or_404(Sale, pk=pk, business=request.user.business)
+    if not _can_view_location(request, sale.location):
+        raise Http404
+    if request.method != "POST":
+        return redirect("sales:pos")
+
+    if sale.is_reversed:
+        messages.error(request, "This sale was already reversed.")
+    elif sale.payment_method == "OUTLET_TRANSFER":
+        messages.error(request, "An outlet transfer can't be reversed this way — sort it out with both branches directly.")
+    elif sale.debtor_id and DebtorPaymentAllocation.objects.filter(sale=sale).exists():
+        messages.error(request, "A payment has already been made against this sale's debt — that needs sorting out first.")
+    elif PendingAction.objects.filter(business=request.user.business, action_type="SALE_REVERSAL",
+                                      status="PENDING", payload__sale_id=sale.pk).exists():
+        messages.error(request, "A reversal request for this sale is already pending.")
+    else:
+        PendingAction.objects.create(
+            business=request.user.business, action_type="SALE_REVERSAL", requested_by=request.user,
+            payload={"sale_id": sale.pk, "receipt_number": sale.receipt_number,
+                    "customer": sale.customer_name or "Walk-in", "total": str(sale.total),
+                    "reason": request.POST.get("reason", "").strip() or "No reason given"},
+        )
+        messages.success(request, f"Reversal requested for {sale.receipt_number} — your manager needs to approve it before anything changes.")
+    return redirect("sales:pos")
 
 
 @login_required

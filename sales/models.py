@@ -116,6 +116,7 @@ class Sale(TimeStamped):
     # view recognise and no-op the repeat instead of ringing up the same
     # sale (and decrementing stock) a second time
     idempotency_key = models.CharField(max_length=40, blank=True, db_index=True)
+    is_reversed = models.BooleanField(default=False)   # rung up in error — corrected by reversal, not a hard delete
 
 
 class SaleItem(models.Model):
@@ -243,7 +244,8 @@ class OutletTransferLine(models.Model):
 
 class PendingAction(TimeStamped):
     """One request/approval engine for the whole system."""
-    TYPES = [("SWAP", "Swap"), ("REFUND", "Refund"), ("STOCK_REQUEST", "Stock request")]
+    TYPES = [("SWAP", "Swap"), ("REFUND", "Refund"), ("STOCK_REQUEST", "Stock request"),
+             ("SALE_REVERSAL", "Sale reversal")]
     STATUS = [("PENDING", "Pending"), ("APPROVED", "Approved"), ("REJECTED", "Rejected")]
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
     action_type = models.CharField(max_length=15, choices=TYPES)

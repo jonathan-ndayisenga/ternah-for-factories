@@ -104,6 +104,21 @@ def post_cogs_correction(sale, amount, memo):
                 [(accounts["5000"], amount, 0), (accounts["1210"], 0, amount)])
 
 
+def reverse_sale(sale, actor=None):
+    """A sale rung up in error, approved for reversal — same mechanical
+    flip as every other reversal in this ledger: swap every line of the
+    original entry, so it's correct regardless of payment method (cash,
+    credit, whatever). Dated today, not the sale's own day, since that's
+    when the undo actually happened."""
+    original = JournalEntry.objects.filter(business=sale.business,
+                                           source_ref=f"sale:{sale.pk}").prefetch_related("lines").first()
+    if not original:
+        return None
+    lines = [(l.ledger_account, l.credit, l.debit) for l in original.lines.all()]
+    return _post(sale.business, sale.location.branch, timezone.now().date(), "REVERSAL",
+                f"reversal:sale:{sale.pk}", f"Reversal — {sale.receipt_number}", lines, actor=actor)
+
+
 def post_debtor_payment(payment):
     business = payment.debtor.business
     accounts = get_accounts(business)

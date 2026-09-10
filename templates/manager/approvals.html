@@ -24,7 +24,8 @@
     <form method="post" action="{% url 'manager:approval_decide' a.pk %}" class="stack">
       {% csrf_token %}
       <div style="display:flex;gap:.5rem">
-        <button class="btn" name="decision" value="approve" style="flex:1">Approve</button>
+        <button class="btn" name="decision" value="approve" style="flex:1"
+                {% if a.action_type == "SALE_REVERSAL" %}onclick="return confirm('Approve this sale reversal? The items go back into stock and a correcting entry posts to the books immediately — this can\'t be undone from here.')"{% endif %}>Approve</button>
         <button class="btn ghost" name="decision" value="reject" style="flex:1;background:#FADBD8;color:var(--red)"
                 onclick="return confirmReject(this)">Reject</button>
       </div>

@@ -98,16 +98,27 @@
       <div class="stat-panel-inner">
         <div class="table-scroll">
         <table class="list">
-          <tr><th>Time</th><th>Receipt</th><th>Customer</th><th>Method</th><th>Total</th></tr>
+          <tr><th>Time</th><th>Receipt</th><th>Customer</th><th>Method</th><th>Total</th><th></th></tr>
           {% for s in sales_page_obj %}
-          <tr>
+          <tr{% if s.is_reversed %} style="opacity:.5"{% endif %}>
             <td>{{ s.created_at|date:"H:i" }}</td>
             <td><a href="{% url 'sales:receipt' s.pk %}" style="color:var(--ternah-blue);font-weight:600">{{ s.receipt_number }}</a></td>
             <td>{{ s.customer_name|default:"—" }}</td>
             <td>{{ s.get_payment_method_display }}</td>
             <td>UGX {{ s.total|floatformat:0 }}</td>
+            <td>
+              {% if s.is_reversed %}<span class="pill locked">Reversed</span>
+              {% else %}
+              <form method="post" action="{% url 'sales:sale_reversal_request' s.pk %}" style="display:inline"
+                    onsubmit="return requestSaleReversal(this, '{{ s.receipt_number|escapejs }}')">
+                {% csrf_token %}
+                <input type="hidden" name="reason" class="reversal-reason-input">
+                <button class="btn ghost" style="background:#FDECEA;color:var(--red);padding:.35rem .6rem;min-height:auto">Request reversal</button>
+              </form>
+              {% endif %}
+            </td>
           </tr>
-          {% empty %}<tr><td colspan="5" style="color:var(--muted)">No sales yet today.</td></tr>{% endfor %}
+          {% empty %}<tr><td colspan="6" style="color:var(--muted)">No sales yet today.</td></tr>{% endfor %}
         </table>
         </div>
         {% include "partials/pagination.html" with page_obj=sales_page_obj page_param="sales_page" extra_qs=sales_extra_qs anchor="statSalesPanel" %}
@@ -275,6 +286,12 @@
 
 {% block scripts %}
 <script>
+function requestSaleReversal(form, receiptNumber) {
+  const reason = prompt(`Why does ${receiptNumber} need to be reversed?`);
+  if (reason === null || reason.trim() === "") return false;
+  form.querySelector(".reversal-reason-input").value = reason.trim();
+  return confirm(`Send this to your manager for approval?\n\nNothing changes yet — stock and the books only update once they approve it.`);
+}
 function submitDebtorPayment(form, debtorName, balance) {
   const amountInput = form.querySelector('input[name="amount"]');
   const amount = parseFloat(amountInput.value) || 0;
