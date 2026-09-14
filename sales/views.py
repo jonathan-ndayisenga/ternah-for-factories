@@ -415,7 +415,7 @@ def received_items(request):
     indefinitely with nobody able to see it needed confirming."""
     location = _pos_location(request)
     allowed = _allowed_tiers(request)
-    lines, pending = [], []
+    lines, pending, disputed = [], [], []
     if location:
         lines = list(DistributionLine.objects.filter(distribution__receiver_location=location,
                                                       distribution__status="RECEIVED")
@@ -428,7 +428,10 @@ def received_items(request):
             ]
         pending = list(Distribution.objects.filter(receiver_location=location, status="SENT")
                       .prefetch_related("lines__product").order_by("date"))
-    return render(request, "sales/received_items.html", {"location": location, "lines": lines, "pending": pending})
+        disputed = list(Distribution.objects.filter(receiver_location=location, status="DISPUTED")
+                        .prefetch_related("lines__product").order_by("date"))
+    return render(request, "sales/received_items.html",
+                 {"location": location, "lines": lines, "pending": pending, "disputed": disputed})
 
 
 @login_required
@@ -436,11 +439,14 @@ def received_item_confirm(request, pk):
     """A rep confirming (or disputing) a delivery addressed to their own
     personal inventory — same landing logic as production.distribution_confirm,
     but self-service since nobody else may ever see this one to confirm it
-    for them (see received_items' note above)."""
+    for them (see received_items' note above). A DISPUTED delivery can still
+    be confirmed later — covers the common mis-click (meant Confirm, hit
+    Dispute) without leaving the stock stranded off both production's books
+    and the rep's own."""
     if _acting_role(request) != "SALES_REP":
         return redirect("home")
     location = _pos_location(request)
-    dist = get_object_or_404(Distribution, pk=pk, receiver_location=location, status="SENT")
+    dist = get_object_or_404(Distribution, pk=pk, receiver_location=location, status__in=["SENT", "DISPUTED"])
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "confirm":
@@ -463,7 +469,7 @@ def received_item_confirm(request, pk):
             dist.confirmed_by = request.user
             dist.save(update_fields=["status", "confirmed_by"])
             messages.success(request, f"{dist.delivery_note_number} confirmed — it's now in your stock, ready to sell.")
-        elif action == "dispute":
+        elif action == "dispute" and dist.status == "SENT":
             dist.status = "DISPUTED"
             dist.save(update_fields=["status"])
             messages.error(request, f"{dist.delivery_note_number} marked disputed — flag it with your manager to sort out.")

@@ -358,13 +358,18 @@ def distribution_confirm(request, pk):
     """Receiver's side of the loop: stock only actually lands in their
     inventory once they confirm — a dispute leaves it in limbo, not silently
     landed or silently lost. Reached from the manager's Inventory page (their
-    normal home for this) or Production's own Distributions list."""
+    normal home for this) or Production's own Distributions list.
+
+    A dispute can itself be a mis-click (meant to hit Confirm) — so a
+    DISPUTED delivery can still be resolved with "confirm", same landing
+    logic, just later. Once RECEIVED there's no further action here;
+    correcting that is a stock adjustment, not a re-confirm."""
     next_url = request.POST.get("next", "")
     if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
         next_url = "production:distributions"
 
     biz = request.user.business
-    dist = get_object_or_404(Distribution, pk=pk, business=biz, status="SENT")
+    dist = get_object_or_404(Distribution, pk=pk, business=biz, status__in=["SENT", "DISPUTED"])
     action = request.POST.get("action")
     if action == "confirm":
         factory_store = InventoryLocation.objects.filter(business=biz, branch=dist.sender_branch, type="PRODUCTION_STORE").first()
@@ -387,7 +392,7 @@ def distribution_confirm(request, pk):
         dist.status = "RECEIVED"
         dist.confirmed_by = request.user
         dist.save(update_fields=["status", "confirmed_by"])
-    elif action == "dispute":
+    elif action == "dispute" and dist.status == "SENT":
         dist.status = "DISPUTED"
         dist.save(update_fields=["status"])
     return redirect(next_url)

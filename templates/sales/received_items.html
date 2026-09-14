@@ -35,6 +35,31 @@
 </div>
 {% endif %}
 
+{% if disputed %}
+<div class="card" style="margin-bottom:1rem;background:#FADBD8">
+  <h3 style="color:var(--red)">Disputed</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">Flagged and not in your stock. If this was a mis-click and you've actually got the goods, resolve it below to land it in your stock.</p>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Delivery Note</th><th>Items</th><th></th></tr>
+    {% for d in disputed %}
+    <tr>
+      <td>{{ d.date|date:"d M Y" }}</td>
+      <td>{{ d.delivery_note_number }}</td>
+      <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        <form method="post" action="{% url 'sales:received_item_confirm' d.pk %}">
+          {% csrf_token %}
+          <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto" onclick="return confirm('Resolve this dispute and confirm receipt after all? It will be added to your stock, ready to sell.')">Resolve — confirm receipt</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="table-scroll">
 <table class="list">
   <tr><th>Date</th><th>Product</th><th>Quantity</th><th>Batch</th><th>Delivery Note</th><th>Your selling price</th></tr>

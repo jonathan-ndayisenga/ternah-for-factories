@@ -33,6 +33,11 @@
         <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto" onclick="return confirm('Confirm receipt of this stock? It will land in the destination inventory.')">Confirm</button>
         <button class="btn ghost ternah-dispute" name="action" value="dispute" style="padding:.4rem .7rem;min-height:auto;background:#FADBD8;color:var(--red)" onclick="return confirm('Dispute this distribution? It will be flagged and left unresolved until sorted out manually.')">Dispute</button>
       </form>
+      {% elif d.status == "DISPUTED" %}
+      <form method="post" action="{% url 'production:distribution_confirm' d.pk %}">
+        {% csrf_token %}
+        <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto" onclick="return confirm('Resolve this dispute and confirm receipt after all? Stock will land in the destination inventory as if this was Confirmed from the start.')">Resolve — mark received</button>
+      </form>
       {% endif %}
     </td>
   </tr>
