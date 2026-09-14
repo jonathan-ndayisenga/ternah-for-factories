@@ -158,6 +158,11 @@ class ProductionBatch(TimeStamped):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     manufacture_date = models.DateField(null=True, blank=True)   # set at Complete & QA, not at dispensing
     expiry_date = models.DateField(null=True, blank=True)        # auto-suggested from product.shelf_life_days
+    # extra raw material used beyond what the formula called for — a real
+    # cost of running this batch, but an abnormal one, so it's tracked and
+    # posted separately (Production Losses) rather than folded into
+    # unit_cost_at_production, which stays driven by the formula alone
+    loss_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
 
     def requirements(self):
         """Formula x target output -> total raw material needed per line."""
@@ -165,11 +170,16 @@ class ProductionBatch(TimeStamped):
 
 
 class Dispensation(models.Model):
-    """Traceability: which purchase batch fed which production batch (FEFO)."""
+    """Traceability: which purchase batch fed which production batch (FEFO).
+    is_loss marks extra material drawn beyond the formula's own plan —
+    wastage/spillage recorded at Complete & QA, not part of the planned
+    build, but still real stock consumption with the same FEFO trail."""
     batch = models.ForeignKey(ProductionBatch, on_delete=models.CASCADE, related_name="dispensations")
     raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT)
     purchase = models.ForeignKey(RawMaterialPurchase, on_delete=models.PROTECT)
     quantity_dispensed = models.DecimalField(max_digits=12, decimal_places=3)
+    is_loss = models.BooleanField(default=False)
+    note = models.CharField(max_length=200, blank=True)
 
 
 class QAReport(TimeStamped):

@@ -6,6 +6,7 @@ Everything below the pricing/distribution section is Production's own
 module: raw materials in, formulas, batches, QA, out to distribution."""
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
+from itertools import zip_longest
 
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
@@ -18,7 +19,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from core.models import Branch
 from finance.models import Supplier, SupplierPayable
-from finance.services import post_batch_completion, post_raw_material_purchase, reverse_raw_material_purchase
+from finance.services import post_batch_completion, post_batch_loss, post_raw_material_purchase, reverse_raw_material_purchase
 from sales.models import InventoryLocation, StockItem, StockMovement, StockRequest
 from .models import (
     Category, Dispensation, Distribution, DistributionLine, FormulaLine, Product, ProductFormula,
@@ -617,9 +618,9 @@ def raw_material_movements(request, pk):
                         "ref": p.batch_number or "—", "purchase": p, "branch": p.branch,
                         "can_reverse": not p.is_reversed and p.remaining_quantity == p.quantity})
     for d in material.dispensation_set.select_related("batch__branch"):
-        entries.append({"date": d.batch.date, "type": "Dispensed", "change": -d.quantity_dispensed,
-                        "ref": d.batch.batch_number, "purchase": None, "branch": d.batch.branch,
-                        "can_reverse": False})
+        entries.append({"date": d.batch.date, "type": "Loss" if d.is_loss else "Dispensed",
+                        "change": -d.quantity_dispensed, "ref": d.batch.batch_number, "purchase": None,
+                        "branch": d.batch.branch, "can_reverse": False, "is_loss": d.is_loss})
     entries.sort(key=lambda e: e["date"], reverse=True)
     return render(request, "production/raw_material_movements.html", {
         "material": material, "entries": entries, "multi_factory": multi_factory,
@@ -793,8 +794,35 @@ def batch_complete(request, pk):
             if expiry_date <= manufacture_date:
                 expiry_date = None   # nonsensical — drop it rather than stamp bad data
 
+        # extra raw material used beyond what the formula planned for —
+        # validated all-or-nothing before anything is committed, same rule
+        # as dispensing a batch in the first place
+        loss_lines = []
+        for mid, qty_raw, note in zip_longest(
+            request.POST.getlist("loss_material"), request.POST.getlist("loss_quantity"),
+            request.POST.getlist("loss_note"), fillvalue="",
+        ):
+            if not mid:
+                continue
+            try:
+                qty = Decimal(qty_raw)
+            except InvalidOperation:
+                continue
+            if qty <= 0:
+                continue
+            material = RawMaterial.objects.filter(pk=mid, business=biz).first()
+            if not material:
+                continue
+            available = material.current_stock(branch=batch.branch)
+            if qty > available:
+                messages.error(request, f"Can't record {qty} {material.unit_of_measure} lost for {material.name} — "
+                                        f"only {available} {material.unit_of_measure} left in stock at this factory.")
+                return redirect("production:batch_complete", pk=batch.pk)
+            loss_lines.append((material, qty, note.strip()))
+
         total_cost = sum(
-            (d.quantity_dispensed * d.purchase.unit_cost for d in batch.dispensations.select_related("purchase")),
+            (d.quantity_dispensed * d.purchase.unit_cost
+             for d in batch.dispensations.filter(is_loss=False).select_related("purchase")),
             Decimal("0"),
         )
         batch.actual_quantity = actual
@@ -823,10 +851,40 @@ def batch_complete(request, pk):
             item.save(update_fields=["quantity", "buying_price"])
             StockMovement.objects.create(location=factory_store, product=batch.product, quantity=actual,
                                          reason="DISTRIBUTION", reference=batch.batch_number, moved_by=request.user)
+
+        loss_total = Decimal("0")
+        for material, qty, note in loss_lines:
+            needed = qty
+            purchases = RawMaterialPurchase.objects.filter(
+                raw_material=material, branch=batch.branch, remaining_quantity__gt=0
+            ).order_by(F("expiry_date").asc(nulls_last=True), "purchase_date")
+            for purchase in purchases:
+                if needed <= 0:
+                    break
+                take = min(needed, purchase.remaining_quantity)
+                Dispensation.objects.create(batch=batch, raw_material=material, purchase=purchase,
+                                            quantity_dispensed=take, is_loss=True, note=note)
+                purchase.remaining_quantity -= take
+                purchase.save(update_fields=["remaining_quantity"])
+                loss_total += take * purchase.unit_cost
+                needed -= take
+        if loss_total:
+            batch.loss_cost = loss_total.quantize(Decimal("0.01"))
+            batch.save(update_fields=["loss_cost"])
+            post_batch_loss(batch, batch.loss_cost, actor=request.user)
+
         post_batch_completion(batch)
+
+        if loss_total:
+            messages.success(request, f"Batch completed. UGX {loss_total:,.2f} of extra raw material use was "
+                                      f"recorded as a production loss — it's posted to the books but not folded "
+                                      f"into this batch's unit cost.")
         return redirect("reports:production_batch_detail", pk=batch.pk)
 
-    return render(request, "production/batch_complete.html", {"batch": batch})
+    materials = RawMaterial.objects.filter(business=biz, is_active=True).order_by("name")
+    for m in materials:
+        m.available = m.current_stock(branch=batch.branch)
+    return render(request, "production/batch_complete.html", {"batch": batch, "materials": materials})
 
 
 # ------------------------------------------------------------ Stock Requests

@@ -1,11 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Complete Batch — {{ batch.batch_number }}{% endblock %}
 {% block content %}
-<div class="card" style="max-width:600px;margin:0 auto">
+<div class="card" style="max-width:680px;margin:0 auto">
   <h2 style="color:var(--ternah-navy);margin-bottom:.25rem">{{ batch.batch_number }}</h2>
   <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">{{ batch.product.name }} — target {{ batch.target_quantity }} units. Dispensed; record what actually came out.</p>
 
-  <form method="post" class="stack" id="completeForm">
+  <style>
+    .loss-row { border:1px solid #E4E9EF; border-radius:10px; padding:.6rem .7rem; margin-bottom:.6rem; background:#FAFBFC; }
+    .loss-search { width:100%; margin-bottom:.5rem; padding:.5rem .7rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; font-size:.85rem; box-sizing:border-box; }
+    .loss-controls { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+    .loss-material { flex:2 1 220px; min-width:200px; padding:.55rem .6rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; }
+    .loss-qty { flex:0 0 100px; width:100px; padding:.55rem .6rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; }
+    .loss-note { flex:1 1 160px; min-width:140px; padding:.55rem .6rem; border:1px solid #D7DEE6; border-radius:8px; font-family:inherit; }
+  </style>
+
+  <form method="post" class="stack" id="completeForm" onsubmit="return confirmComplete()">
     {% csrf_token %}
     <label>Actual quantity produced</label>
     <input name="actual_quantity" id="actualQty" type="number" min="1" value="{{ batch.target_quantity }}" required oninput="updateVariance()">
@@ -20,6 +29,24 @@
     <input name="manufacture_date" id="mfgDate" type="date" required>
     <label>Expiry date <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">{% if batch.product.shelf_life_days %}(auto-suggested from {{ batch.product.name }}'s {{ batch.product.shelf_life_days }}-day shelf life — adjust if needed){% else %}(optional){% endif %}</span></label>
     <input name="expiry_date" id="expDate" type="date">
+
+    <label style="margin-top:1rem">Extra raw material used <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(beyond what the formula called for)</span></label>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:.5rem">Wastage, spillage, a fumbled measure — whatever went in over the plan. Deducts from this factory's stock and posts to Production Losses; it does not change this batch's own unit cost.</p>
+    <div id="lossRows">
+      <div class="loss-row">
+        <input type="text" class="loss-search" placeholder="Search raw material…" oninput="filterLossOptions(this)">
+        <div class="loss-controls">
+          <select name="loss_material" class="loss-material" onchange="onLossMaterialChange(this)">
+            <option value="">Select material…</option>
+            {% for m in materials %}<option value="{{ m.pk }}" data-available="{{ m.available }}">{{ m.name }} ({{ m.available|floatformat:3 }} {{ m.unit_of_measure }} available)</option>{% endfor %}
+          </select>
+          <input type="number" step="0.001" min="0.001" name="loss_quantity" class="loss-qty" placeholder="Qty" oninput="validateLossQty(this)">
+          <input type="text" name="loss_note" class="loss-note" placeholder="Note (optional)">
+          <button type="button" class="btn ghost row-remove" onclick="removeLossRow(this)">&times;</button>
+        </div>
+      </div>
+    </div>
+    <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addLossRow()">+ Add material</button>
 
     <button class="btn" style="margin-top:1.2rem;width:100%">Complete batch & land in store</button>
   </form>
@@ -55,6 +82,52 @@ function updateExpiry() {
     d.setDate(d.getDate() + shelfLifeDays);
     expInput.value = toLocalISODate(d);
   }
+}
+function filterLossOptions(input) {
+  const sel = input.closest(".loss-row").querySelector(".loss-material");
+  const q = input.value.trim().toLowerCase();
+  Array.from(sel.options).forEach(opt => {
+    opt.hidden = !!(opt.value && q && !opt.textContent.toLowerCase().includes(q));
+  });
+}
+function onLossMaterialChange(sel) {
+  const row = sel.closest(".loss-row");
+  const qtyInput = row.querySelector(".loss-qty");
+  const opt = sel.selectedOptions[0];
+  qtyInput.max = opt ? (opt.dataset.available || 0) : 0;
+  validateLossQty(qtyInput);
+}
+function validateLossQty(input) {
+  const max = parseFloat(input.max);
+  if (max && parseFloat(input.value) > max) input.value = max;
+}
+function addLossRow() {
+  const rows = document.getElementById("lossRows");
+  const row = rows.firstElementChild.cloneNode(true);
+  row.querySelector(".loss-search").value = "";
+  Array.from(row.querySelectorAll(".loss-material option")).forEach(o => o.hidden = false);
+  row.querySelector(".loss-material").selectedIndex = 0;
+  row.querySelector(".loss-qty").value = "";
+  row.querySelector(".loss-qty").removeAttribute("max");
+  row.querySelector(".loss-note").value = "";
+  rows.appendChild(row);
+}
+function removeLossRow(btn) {
+  const rows = document.getElementById("lossRows");
+  if (rows.children.length > 1) btn.closest(".loss-row").remove();
+}
+function confirmComplete() {
+  const lossBits = [];
+  document.querySelectorAll("#lossRows .loss-row").forEach(row => {
+    const sel = row.querySelector(".loss-material");
+    const qty = row.querySelector(".loss-qty").value;
+    if (sel.value && qty) lossBits.push(`${qty} × ${sel.selectedOptions[0].textContent.split(" (")[0]}`);
+  });
+  let msg = "Complete this batch? It lands in the finished-goods store at the cost you're about to lock in.";
+  if (lossBits.length) {
+    msg += `\n\nExtra material recorded as lost: ${lossBits.join(", ")}. This deducts from stock and posts to Production Losses — it will not change this batch's own unit cost.`;
+  }
+  return confirm(msg);
 }
 document.addEventListener("DOMContentLoaded", function () {
   updateVariance();

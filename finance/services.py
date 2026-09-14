@@ -28,6 +28,7 @@ ACCOUNT_DEFS = [
     ("4000", "Sales Revenue", "INCOME"),
     ("5000", "Cost of Goods Sold", "COGS"),
     ("5100", "Operating Expenses", "EXPENSE"),
+    ("5200", "Production Losses", "EXPENSE"),
 ]
 
 PAYMENT_ACCOUNT_CODES = {"CASH": "1000", "MOBILE_MONEY": "1010", "CARD": "1020"}
@@ -294,3 +295,15 @@ def post_batch_completion(batch):
     memo = f"{batch.batch_number} completed — {batch.actual_quantity} units"
     return _post(batch.business, None, batch.date, "BATCH", f"batch:{batch.pk}", memo,
                 [(accounts["1210"], batch.total_cost, 0), (accounts["1200"], 0, batch.total_cost)])
+
+
+def post_batch_loss(batch, amount, actor=None):
+    """Extra raw material used beyond what the formula called for — a real
+    cost, but an abnormal one, so it's expensed straight to Production
+    Losses rather than added to Raw Materials -> Finished Goods like the
+    planned dispensing is. Keeps unit_cost_at_production driven purely by
+    the formula, not inflated by one messy run."""
+    accounts = get_accounts(batch.business)
+    memo = f"{batch.batch_number} — extra raw material used beyond formula"
+    return _post(batch.business, None, batch.date, "BATCH_LOSS", f"batch_loss:{batch.pk}", memo,
+                [(accounts["5200"], amount, 0), (accounts["1200"], 0, amount)], actor=actor)

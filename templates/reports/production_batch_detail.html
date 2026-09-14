@@ -17,6 +17,12 @@
   <div class="card"><h3>Unit Cost</h3><div class="big" style="font-size:1.2rem">UGX {{ batch.unit_cost_at_production|floatformat:2 }}</div></div>
 </div>
 
+{% if batch.loss_cost %}
+<div class="card" style="margin-top:1rem;background:#FDECEA">
+  <p style="font-weight:600;color:var(--red)">UGX {{ batch.loss_cost|floatformat:2 }} of extra raw material use was recorded as a production loss on this batch — posted to the books separately, not included in the unit cost above.</p>
+</div>
+{% endif %}
+
 {% if batch.manufacture_date or batch.expiry_date %}
 <div class="grid cards-4" style="margin-top:1rem">
   <div class="card"><h3>Manufacture Date</h3><div class="big" style="font-size:1.2rem">{{ batch.manufacture_date|date:"d M Y"|default:"—" }}</div></div>
@@ -40,14 +46,15 @@
   <h3>Raw materials dispensed</h3>
   <div class="table-scroll">
   <table class="list">
-    <tr><th>Raw Material</th><th>Quantity Dispensed</th><th>Sourced From</th></tr>
+    <tr><th>Raw Material</th><th>Quantity Dispensed</th><th>Sourced From</th><th></th></tr>
     {% for d in dispensations %}
-    <tr>
+    <tr{% if d.is_loss %} style="background:#FDECEA"{% endif %}>
       <td>{{ d.raw_material.name }}</td>
       <td>{{ d.quantity_dispensed }} {{ d.raw_material.unit_of_measure }}</td>
       <td>{{ d.purchase.batch_number }} (UGX {{ d.purchase.unit_cost|floatformat:2 }}/{{ d.raw_material.unit_of_measure }})</td>
+      <td>{% if d.is_loss %}<span class="pill locked">Loss{% if d.note %} — {{ d.note }}{% endif %}</span>{% endif %}</td>
     </tr>
-    {% empty %}<tr><td colspan="3" style="color:var(--muted)">No dispensation recorded.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="4" style="color:var(--muted)">No dispensation recorded.</td></tr>{% endfor %}
   </table>
   </div>
 </div>
