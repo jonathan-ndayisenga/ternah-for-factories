@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Return Stock{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Return Stock</h2>
+</div>
+
+{% if not location %}
+<div class="card"><p style="color:var(--muted)">No inventory location is set up for you yet.</p></div>
+{% elif not to_location %}
+<div class="card"><p style="color:var(--muted)">Your branch doesn't have an outlet inventory set up yet — ask an Owner to add one before returning stock.</p></div>
+{% else %}
+
+<div class="card" style="max-width:640px;margin-bottom:1rem">
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.75rem">Sending stock back to your branch's outlet — slow movers, end-of-day surplus, damaged goods. It leaves your stock right away, and lands with your manager once they confirm.</p>
+  {% if items %}
+  <form method="post" class="stack" id="returnForm">
+    {% csrf_token %}
+    <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+    <div id="cartRows">
+      <div class="cart-row">
+        <select name="product" class="ret-product" required onchange="updateMax(this)">
+          <option value="">Select product…</option>
+          {% for i in items %}
+            <option value="{{ i.product.id }}" data-max="{{ i.quantity }}">{{ i.product.name }} ({{ i.quantity }} on hand)</option>
+          {% endfor %}
+        </select>
+        <input type="number" name="quantity" min="1" value="1" required>
+        <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
+      </div>
+    </div>
+    <button type="button" class="btn ghost" style="margin-top:.4rem" onclick="addCartRow()">+ Add item</button>
+
+    <label style="margin-top:1rem">Reason <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+    <input type="text" name="note" placeholder="Slow mover, damaged, end of day...">
+
+    <button class="btn" style="margin-top:1.2rem;width:100%">Send back to my branch</button>
+  </form>
+  {% else %}
+  <p style="color:var(--muted)">You have no stock on hand to return right now.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>Your returns</h3>
+  <div class="table-scroll" style="margin-top:.5rem">
+  <table class="list">
+    <tr><th>Date</th><th>Reference</th><th>Items</th><th>Status</th></tr>
+    {% for r in my_returns %}
+    <tr>
+      <td>{{ r.date|date:"d M Y" }}</td>
+      <td>{{ r.reference_number }}</td>
+      <td>{% for line in r.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        {% if r.status == "SENT" %}<span class="pill warning">Awaiting your manager</span>
+        {% elif r.status == "RECEIVED" %}<span class="pill active">Received</span>
+        {% else %}<span class="pill locked">Disputed</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="4" style="color:var(--muted)">You haven't returned any stock yet.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateMax(sel) {
+  const row = sel.closest(".cart-row");
+  const qtyInput = row.querySelector("input[name=quantity]");
+  const opt = sel.selectedOptions[0];
+  const max = opt ? parseInt(opt.dataset.max || "0") : 0;
+  qtyInput.max = max;
+  if (max && parseInt(qtyInput.value) > max) qtyInput.value = max;
+}
+function addCartRow() {
+  const rows = document.getElementById("cartRows");
+  const row = rows.firstElementChild.cloneNode(true);
+  row.querySelectorAll("select, input").forEach(el => { if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "1"; });
+  row.querySelector("input[name=quantity]").removeAttribute("max");
+  rows.appendChild(row);
+}
+function removeCartRow(btn) {
+  const rows = document.getElementById("cartRows");
+  if (rows.children.length > 1) btn.closest(".cart-row").remove();
+}
+</script>
+{% endblock %}

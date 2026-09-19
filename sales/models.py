@@ -242,6 +242,34 @@ class OutletTransferLine(models.Model):
     quantity = models.PositiveIntegerField()
 
 
+class StockReturn(TimeStamped):
+    """A sales rep sending stock back to their own branch's outlet — slow
+    movers, end-of-day surplus, damaged goods flagged for the manager. Same
+    branch, no money involved (unlike OutletTransfer, which is one outlet
+    selling to another) — a plain stock correction, but with the same
+    in-transit safety as every other stock-moving flow: it leaves the rep's
+    stock immediately, and only lands with the manager once they confirm."""
+    STATUS = [("SENT", "Sent"), ("RECEIVED", "Received"), ("DISPUTED", "Disputed")]
+    business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
+    from_location = models.ForeignKey(InventoryLocation, on_delete=models.PROTECT, related_name="returns_sent")
+    to_location = models.ForeignKey(InventoryLocation, on_delete=models.PROTECT, related_name="returns_received")
+    reference_number = models.CharField(max_length=40)          # RET-INITIALS-DDMMYY-SEQ
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=STATUS, default="SENT")
+    note = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+                                   related_name="stock_returns_created")
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name="stock_returns_confirmed")
+    idempotency_key = models.CharField(max_length=40, blank=True)
+
+
+class StockReturnLine(models.Model):
+    stock_return = models.ForeignKey(StockReturn, on_delete=models.CASCADE, related_name="lines")
+    product = models.ForeignKey("production.Product", on_delete=models.PROTECT)
+    quantity = models.PositiveIntegerField()
+
+
 class PendingAction(TimeStamped):
     """One request/approval engine for the whole system."""
     TYPES = [("SWAP", "Swap"), ("REFUND", "Refund"), ("STOCK_REQUEST", "Stock request"),

@@ -63,6 +63,43 @@
 </div>
 {% endif %}
 
+{% if incoming_returns %}
+<div class="card" style="margin-bottom:1rem">
+  <h3>Returns from reps — awaiting confirmation</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Reference</th><th>Date</th><th>From</th><th>Items</th><th>Status</th><th></th></tr>
+    {% for r in incoming_returns %}
+    <tr>
+      <td>{{ r.reference_number }}</td>
+      <td>{{ r.date|date:"d M Y" }}</td>
+      <td>{{ r.from_location.rep.username|default:"—" }}</td>
+      <td>
+        {% for line in r.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        {% if r.note %}<br><span style="color:var(--muted);font-size:.78rem;font-style:italic">{{ r.note }}</span>{% endif %}
+      </td>
+      <td>
+        {% if r.status == "DISPUTED" %}<span class="pill locked">Disputed</span>{% else %}<span class="pill warning">Sent</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" action="{% url 'sales:stock_return_confirm' r.pk %}" style="display:inline-flex;gap:.4rem">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{% url 'manager:inventory' %}">
+          {% if r.status == "DISPUTED" %}
+          <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto" onclick="return confirm('Resolve this dispute and confirm receipt after all? It will land in your stock.')">Resolve — mark received</button>
+          {% else %}
+          <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto">Confirm</button>
+          <button class="btn ghost" name="action" value="dispute" style="padding:.4rem .7rem;min-height:auto;background:#FADBD8;color:var(--red)">Dispute</button>
+          {% endif %}
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+
 {% if not location %}
 <div class="card"><p style="color:var(--muted)">No outlet inventory is set up for your branch yet.</p></div>
 {% else %}

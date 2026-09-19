@@ -15,7 +15,7 @@ from finance.services import reverse_sale
 from production.models import Distribution, Product
 from sales.models import (
     Debtor, DebtorPayment, DebtorPaymentAllocation, InventoryLocation, OutletTransfer, PendingAction, Sale,
-    StockItem, StockMovement,
+    StockItem, StockMovement, StockReturn,
 )
 
 manager_required = user_passes_test(lambda u: u.is_authenticated and u.role == "MANAGER")
@@ -153,6 +153,9 @@ def inventory(request):
         "incoming_transfers": OutletTransfer.objects.filter(
             business=request.user.business, status="SENT", to_location__branch=request.user.branch
         ).select_related("from_location__branch").prefetch_related("lines__product").order_by("date"),
+        "incoming_returns": StockReturn.objects.filter(
+            business=request.user.business, status__in=["SENT", "DISPUTED"], to_location__branch=request.user.branch
+        ).select_related("from_location__rep").prefetch_related("lines__product").order_by("date"),
     }
     if location:
         items = list(StockItem.objects.filter(location=location).select_related("product").order_by("product__name"))

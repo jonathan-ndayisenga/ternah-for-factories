@@ -19,7 +19,7 @@ from production.models import Distribution, DistributionLine, Product
 from .models import (
     BankAccount, DailyOpeningBalance, Debtor, DebtorPayment, DebtorPaymentAllocation, Expense, InventoryLocation,
     MomoAccount, OutletTransfer, OutletTransferLine, PendingAction, Sale, SaleItem, StockItem, StockMovement,
-    StockRequest,
+    StockRequest, StockReturn, StockReturnLine,
 )
 
 POS_ROLES = ("CASHIER", "SALES_REP")
@@ -559,6 +559,115 @@ def stock_request_cancel(request, pk):
             stock_request.save(update_fields=["status"])
             messages.success(request, "Stock request cancelled.")
     return redirect("sales:stock_request_create")
+
+
+@login_required
+def stock_return_create(request):
+    """A rep sending stock back to their own branch's outlet — slow movers,
+    end-of-day surplus, damaged goods. Deliberately keyed off the user's own
+    personal inventory (not _pos_location, which falls back to the branch
+    outlet for a manager previewing this view) — a return only makes sense
+    from a real rep location, never outlet-to-itself."""
+    if request.user.role != "SALES_REP":
+        return redirect("home")
+    biz = request.user.business
+    location = getattr(request.user, "inventory", None)
+    to_location = InventoryLocation.objects.filter(business=biz, branch=location.branch, type="OUTLET").first() \
+        if location else None
+
+    items = list(StockItem.objects.filter(location=location, quantity__gt=0).select_related("product").order_by("product__name")) \
+        if location else []
+
+    if request.method == "POST" and location and not to_location:
+        messages.error(request, "Your branch doesn't have an outlet inventory set up yet — ask an Owner to add one before returning stock.")
+        return redirect("sales:stock_return_create")
+
+    if request.method == "POST" and location and to_location:
+        idempotency_key = request.POST.get("idempotency_key", "").strip()
+        if idempotency_key and StockReturn.objects.filter(business=biz, idempotency_key=idempotency_key).exists():
+            messages.success(request, "That return was already sent.")
+            return redirect("sales:stock_return_create")
+        lines = []
+        for pid, qty in zip(request.POST.getlist("product"), request.POST.getlist("quantity")):
+            try:
+                qty = int(qty)
+            except (TypeError, ValueError):
+                continue
+            if not pid or qty <= 0:
+                continue
+            item = StockItem.objects.filter(location=location, product_id=pid).first()
+            if not item:
+                continue
+            qty = min(qty, item.quantity)   # can't return more than actually on hand
+            if qty <= 0:
+                continue
+            lines.append((item, qty))
+        if lines:
+            seq = StockReturn.objects.filter(business=biz, date=timezone.localdate()).count() + 1
+            ret = StockReturn.objects.create(
+                business=biz, from_location=location, to_location=to_location,
+                reference_number=f"RET-{request.user.username[:4].upper()}-{timezone.localdate():%d%m%y}-{seq:03d}",
+                date=timezone.localdate(), status="SENT", created_by=request.user,
+                note=request.POST.get("note", "").strip(), idempotency_key=idempotency_key,
+            )
+            for item, qty in lines:
+                StockReturnLine.objects.create(stock_return=ret, product=item.product, quantity=qty)
+                item.quantity -= qty
+                item.save(update_fields=["quantity"])
+                StockMovement.objects.create(location=location, product=item.product, quantity=-qty,
+                                             reason="RETURN", reference=ret.reference_number,
+                                             moved_by=request.user, counterparty=to_location)
+            messages.success(request, f"Sent back to {to_location.branch.name} — reference {ret.reference_number}. "
+                                      f"It'll land in their stock once your manager confirms.")
+        else:
+            messages.error(request, "Add at least one product with a quantity to return.")
+        return redirect("sales:stock_return_create")
+
+    my_returns = StockReturn.objects.filter(from_location=location).prefetch_related("lines__product").order_by("-date", "-id")[:20] \
+        if location else []
+    return render(request, "sales/stock_return_create.html", {
+        "location": location, "to_location": to_location, "items": items, "my_returns": my_returns,
+        "idempotency_key": uuid.uuid4().hex,
+    })
+
+
+@login_required
+@user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER"))
+def stock_return_confirm(request, pk):
+    """Manager/Owner's side of the loop — same landing logic, and the same
+    disputed-can-still-be-resolved rule, as production.distribution_confirm
+    and outlet_transfer_confirm."""
+    next_url = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        next_url = "manager:inventory"
+
+    biz = request.user.business
+    ret = get_object_or_404(StockReturn, pk=pk, business=biz, status__in=["SENT", "DISPUTED"])
+    if request.user.role == "MANAGER" and ret.to_location.branch_id != request.user.branch_id:
+        return redirect(next_url)
+
+    action = request.POST.get("action")
+    if action == "confirm":
+        for line in ret.lines.select_related("product"):
+            source_cost = StockItem.objects.filter(
+                location=ret.from_location, product=line.product).values_list("buying_price", flat=True).first() or 0
+            item, _ = StockItem.objects.get_or_create(
+                location=ret.to_location, product=line.product,
+                defaults={"buying_price": source_cost, "selling_price": 0},
+            )
+            item.quantity += line.quantity
+            item.buying_price = source_cost
+            item.save(update_fields=["quantity", "buying_price"])
+            StockMovement.objects.create(location=ret.to_location, product=line.product, quantity=line.quantity,
+                                         reason="RETURN", reference=ret.reference_number,
+                                         moved_by=request.user, counterparty=ret.from_location)
+        ret.status = "RECEIVED"
+        ret.confirmed_by = request.user
+        ret.save(update_fields=["status", "confirmed_by"])
+    elif action == "dispute" and ret.status == "SENT":
+        ret.status = "DISPUTED"
+        ret.save(update_fields=["status"])
+    return redirect(next_url)
 
 
 @login_required
