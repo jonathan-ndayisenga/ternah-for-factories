@@ -113,9 +113,15 @@ def select_section(request, key):
 
 _NOTIF_STATUS_KIND = {
     "SENT": "warning", "SUBMITTED": "warning", "PARTIAL": "warning", "PENDING": "warning",
+    "PLANNED": "warning", "DISPENSED": "warning",
     "DISPUTED": "locked", "REJECTED": "locked",
-    "RECEIVED": "active", "FULFILLED": "active", "APPROVED": "active",
+    "RECEIVED": "active", "FULFILLED": "active", "APPROVED": "active", "COMPLETED": "active", "POSTED": "active",
 }
+_NOTIF_KIND_LABELS = [
+    ("distribution", "Distribution"), ("outlet_transfer", "Outlet Transfer"), ("stock_return", "Stock Return"),
+    ("stock_request", "Stock Request"), ("approval", "Approval"), ("batch", "Batch Produced"),
+    ("transaction", "Transaction"),
+]
 
 
 @login_required
@@ -149,7 +155,8 @@ def notifications(request):
             return
         go_url = f"{reverse('notification_go', args=[kind_code, pk])}?next={dest_url}" if dest_url else None
         events.append({
-            "date": when, "kind": kind_label, "reference": reference, "from_label": from_label, "to_label": to_label,
+            "date": when, "kind_code": kind_code, "kind": kind_label, "reference": reference,
+            "from_label": from_label, "to_label": to_label,
             "items": items, "status": status, "status_display": status_display,
             "status_kind": _NOTIF_STATUS_KIND.get(status, "warning"),
             "dest_label": dest_label, "dest_url": go_url,
@@ -245,6 +252,35 @@ def notifications(request):
         add(a.created_at.date(), "approval", "Approval", a.pk, "", a.requested_by.username, "",
             a.get_action_type_display(), a.status, a.get_status_display(), dest[0], dest[1])
 
+    # ---- Batch Produced: a completed production run — Owner's window into
+    # the factory floor, same "informational, not a second inbox" rule as
+    # the branch-scoped kinds above ----
+    if is_owner:
+        from production.models import ProductionBatch
+        batch_qs = ProductionBatch.objects.filter(business=biz, status="COMPLETED").select_related("branch", "product")
+        for b in batch_qs.order_by("-manufacture_date", "-id")[:60]:
+            add(b.manufacture_date or b.date, "batch", "Batch Produced", b.pk, b.batch_number,
+                b.branch.name if b.branch else "—", b.product.name,
+                f"{b.actual_quantity} units @ UGX {b.unit_cost_at_production:,.2f}/unit",
+                b.status, b.get_status_display(), "Batch Report", reverse("reports:production_batch_detail", args=[b.pk]))
+
+    # ---- Transaction: anything posted to the ledger — every sale, expense,
+    # purchase, payment, reversal or manual entry that touches the books ----
+    if is_owner:
+        from finance.models import JournalEntry
+        je_qs = JournalEntry.objects.filter(business=biz).select_related("branch").prefetch_related("lines")
+        for e in je_qs.order_by("-date", "-id")[:60]:
+            total = sum(l.debit for l in e.lines.all())
+            add(e.date, "transaction", "Transaction", e.pk, e.number or e.source_ref, e.get_source_display(),
+                e.branch.name if e.branch else "—", f"UGX {total:,.2f} — {e.memo}", "POSTED", "Posted",
+                "General Ledger", reverse("finance:general_ledger"))
+
+    visible_kinds = {e["kind_code"] for e in events}
+    kind_choices = [(code, label) for code, label in _NOTIF_KIND_LABELS if code in visible_kinds]
+
+    type_filter = request.GET.get("type", "")
+    if type_filter:
+        events = [e for e in events if e["kind_code"] == type_filter]
     date_from = request.GET.get("from", "")
     date_to = request.GET.get("to", "")
     if date_from:
@@ -258,6 +294,7 @@ def notifications(request):
     qd.pop("page", None)
     return render(request, "notifications.html", {
         "page_obj": page_obj, "extra_qs": qd.urlencode(), "date_from": date_from, "date_to": date_to,
+        "type_filter": type_filter, "kind_choices": kind_choices,
     })
 
 
