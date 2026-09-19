@@ -66,3 +66,21 @@ class Note(models.Model):
 
     class Meta:
         ordering = ["-updated_at"]
+
+
+class NotificationDismissal(models.Model):
+    """A user has followed a notification through to where it's handled —
+    it drops off their own feed from then on. Deliberately NOT wired into
+    the badge counts (Inventory/Approvals/tile/nav) — those stay purely
+    driven by the underlying record's real status, so dismissing a
+    notification you've merely looked at can never make a still-pending
+    item silently stop asking for attention. Naming it "dismissal" rather
+    than "read" for that reason: it means "stop showing me this", not
+    "this is resolved"."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notification_dismissals")
+    kind = models.CharField(max_length=20)     # "distribution", "outlet_transfer", "stock_return", "stock_request", "approval"
+    object_id = models.PositiveIntegerField()
+    dismissed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("user", "kind", "object_id")]

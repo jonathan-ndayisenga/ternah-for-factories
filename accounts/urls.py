@@ -8,6 +8,7 @@ urlpatterns = [
     path("switch/<str:view>/", views.switch_view, name="switch_view"),
     path("section/<str:key>/", views.select_section, name="select_section"),
     path("notifications/", views.notifications, name="notifications"),
+    path("notifications/<str:kind>/<int:pk>/go/", views.notification_go, name="notification_go"),
     path("users/", views.user_list, name="user_list"),
     path("users/new/", views.user_create, name="user_create"),
     path("users/<int:pk>/edit/", views.user_edit, name="user_edit"),
