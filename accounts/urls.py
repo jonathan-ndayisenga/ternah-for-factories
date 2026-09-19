@@ -7,6 +7,7 @@ urlpatterns = [
     path("logout/", auth_views.LogoutView.as_view(next_page="login"), name="logout"),
     path("switch/<str:view>/", views.switch_view, name="switch_view"),
     path("section/<str:key>/", views.select_section, name="select_section"),
+    path("notifications/", views.notifications, name="notifications"),
     path("users/", views.user_list, name="user_list"),
     path("users/new/", views.user_create, name="user_create"),
     path("users/<int:pk>/edit/", views.user_edit, name="user_edit"),

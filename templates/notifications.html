@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h2>Notifications</h2>
+</div>
+<p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem">Every stock movement and approval request touching your account — most recent first. A status still in progress links straight to where you'd act on it.</p>
+
+<div class="table-scroll">
+<table class="list">
+  <tr><th>Date</th><th>Type</th><th>Reference</th><th>From</th><th>To</th><th>Items</th><th>Status</th><th></th></tr>
+  {% for e in events %}
+  <tr>
+    <td>{{ e.date|date:"d M Y" }}</td>
+    <td>{{ e.kind }}</td>
+    <td>{{ e.reference|default:"—" }}</td>
+    <td>{{ e.from_label|default:"—" }}</td>
+    <td>{{ e.to_label|default:"—" }}</td>
+    <td>{{ e.items|default:"—" }}</td>
+    <td>
+      {% if e.status_kind == "active" %}<span class="pill active">{{ e.status_display }}</span>
+      {% elif e.status_kind == "locked" %}<span class="pill locked">{{ e.status_display }}</span>
+      {% else %}<span class="pill warning">{{ e.status_display }}</span>{% endif %}
+    </td>
+    <td>{% if e.dest_url %}<a class="btn ghost" style="padding:.35rem .7rem;min-height:auto" href="{{ e.dest_url }}">{{ e.dest_label }}</a>{% endif %}</td>
+  </tr>
+  {% empty %}<tr><td colspan="8" style="color:var(--muted)">Nothing to show yet.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}
