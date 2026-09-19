@@ -568,7 +568,7 @@ def stock_return_create(request):
     personal inventory (not _pos_location, which falls back to the branch
     outlet for a manager previewing this view) — a return only makes sense
     from a real rep location, never outlet-to-itself."""
-    if request.user.role != "SALES_REP":
+    if _acting_role(request) != "SALES_REP":
         return redirect("home")
     biz = request.user.business
     location = getattr(request.user, "inventory", None)
