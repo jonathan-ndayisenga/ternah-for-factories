@@ -1,4 +1,6 @@
-{% comment %}Usage: {% include "partials/print_letterhead.html" with print_title="Cashbook — Kampala Outlet" %}{% endcomment %}
+{% comment %}Usage: {% include "partials/print_letterhead.html" with print_title="Cashbook — Kampala Outlet" %}
+Optionally pass date_from/date_to (as used by the page's own filter form) to
+show the exact range the printed figures cover.{% endcomment %}
 <div class="print-only print-letterhead">
   <div class="print-letterhead-brand">
     <h1>{{ request.user.business.name }}</h1>
@@ -12,5 +14,8 @@
 </div>
 <div class="print-only print-report-title">
   <h2>{{ print_title }}</h2>
+  {% if date_from or date_to %}
+  <p>Period: {{ date_from|default:"the start" }} to {{ date_to|default:"today" }}</p>
+  {% endif %}
   <p>Generated {% now "d M Y, H:i" %}</p>
 </div>

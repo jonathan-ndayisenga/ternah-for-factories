@@ -7,7 +7,7 @@
   <button class="btn" onclick="window.print()">Print</button>
 </div>
 
-{% include "partials/print_letterhead.html" with print_title=print_title %}
+{% include "partials/print_letterhead.html" with print_title=print_title date_from=date_from date_to=date_to %}
 
 <form method="get" class="no-print" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
   <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">From</label>
@@ -18,31 +18,44 @@
   {% if date_from or date_to %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:rep_detail' location.pk %}">Clear</a>{% endif %}
 </form>
 
-<div class="grid cards-4">
-  <a class="card" style="text-decoration:none;color:inherit" href="#tbl-requested">
+<p class="print-only" style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">Every section below, in full — the on-screen view shows one at a time, the printed page shows all of them.</p>
+
+<div class="grid cards-4 accordion-toggle">
+  <button type="button" class="card accordion-btn active" data-target="sec-stock" onclick="showSection('sec-stock', this)" style="text-align:left;cursor:pointer;border:none;font-family:inherit">
+    <h3>Stock on Hand</h3>
+    <div class="big" style="font-size:1.4rem">{{ stock_items|length }}</div>
+    <div style="color:var(--muted);font-size:.8rem">product{{ stock_items|length|pluralize }}</div>
+  </button>
+  <button type="button" class="card accordion-btn" data-target="sec-requested" onclick="showSection('sec-requested', this)" style="text-align:left;cursor:pointer;border:none;font-family:inherit">
     <h3>Requested</h3>
     <div class="big" style="font-size:1.4rem">{{ requested_total }}</div>
     <div style="color:var(--muted);font-size:.8rem">{{ requested_count }} request{{ requested_count|pluralize }}</div>
-  </a>
-  <a class="card" style="text-decoration:none;color:inherit" href="#tbl-received">
+  </button>
+  <button type="button" class="card accordion-btn" data-target="sec-received" onclick="showSection('sec-received', this)" style="text-align:left;cursor:pointer;border:none;font-family:inherit">
     <h3>Received</h3>
     <div class="big" style="font-size:1.4rem;color:var(--green)">{{ received_total }}</div>
     <div style="color:var(--muted);font-size:.8rem">{{ received_count }} deliver{{ received_count|pluralize:"y,ies" }}</div>
-  </a>
-  <a class="card" style="text-decoration:none;color:inherit" href="#tbl-returned">
+  </button>
+  <button type="button" class="card accordion-btn" data-target="sec-returned" onclick="showSection('sec-returned', this)" style="text-align:left;cursor:pointer;border:none;font-family:inherit">
     <h3>Returned</h3>
     <div class="big" style="font-size:1.4rem;color:var(--amber)">{{ returned_total }}</div>
     <div style="color:var(--muted);font-size:.8rem">{{ returned_count }} return{{ returned_count|pluralize }}</div>
-  </a>
-  <a class="card" style="text-decoration:none;color:inherit" href="#tbl-sold">
+  </button>
+  <button type="button" class="card accordion-btn" data-target="sec-sold" onclick="showSection('sec-sold', this)" style="text-align:left;cursor:pointer;border:none;font-family:inherit">
     <h3>Sold</h3>
     <div class="big" style="font-size:1.4rem">UGX {{ sold_total|floatformat:0 }}</div>
     <div style="color:var(--muted);font-size:.8rem">{{ sold_count }} sale{{ sold_count|pluralize }}</div>
-  </a>
+  </button>
 </div>
 
-<div class="card" style="margin-top:1rem">
-  <h3>Stock on hand right now</h3>
+<style>
+  .accordion-btn { transition: border-color .15s, box-shadow .15s; }
+  .accordion-btn.active { border: 1.5px solid var(--ternah-blue) !important; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+</style>
+
+<div class="card accordion-section" id="sec-stock" style="margin-top:1rem">
+  <h3 class="no-print">Stock on hand right now</h3>
+  <h3 class="print-only">Stock on Hand</h3>
   <div class="table-scroll">
   <table class="list">
     <tr><th>Product</th><th>Quantity</th><th>Cost</th><th>Value</th></tr>
@@ -54,8 +67,9 @@
   </div>
 </div>
 
-<div class="card" id="tbl-requested" style="margin-top:1rem">
-  <h3>Stock requested from Production</h3>
+<div class="card accordion-section" id="sec-requested" style="margin-top:1rem" hidden>
+  <h3 class="no-print">Stock requested from Production</h3>
+  <h3 class="print-only">Stock Requested</h3>
   <div class="table-scroll">
   <table class="list">
     <tr><th>Date</th><th>Items</th><th>Status</th></tr>
@@ -73,11 +87,12 @@
     {% empty %}<tr><td colspan="3" style="color:var(--muted)">No requests in range.</td></tr>{% endfor %}
   </table>
   </div>
-  {% include "partials/pagination.html" with page_obj=requests_page extra_qs=requests_qs_str page_param="req_page" anchor="tbl-requested" %}
+  {% include "partials/pagination.html" with page_obj=requests_page extra_qs=requests_qs_str page_param="req_page" %}
 </div>
 
-<div class="card" id="tbl-received" style="margin-top:1rem">
-  <h3>Stock actually received</h3>
+<div class="card accordion-section" id="sec-received" style="margin-top:1rem" hidden>
+  <h3 class="no-print">Stock actually received</h3>
+  <h3 class="print-only">Stock Received</h3>
   <div class="table-scroll">
   <table class="list">
     <tr><th>Date</th><th>Delivery Note</th><th>From</th><th>Items</th><th></th></tr>
@@ -92,11 +107,12 @@
     {% empty %}<tr><td colspan="5" style="color:var(--muted)">No deliveries in range.</td></tr>{% endfor %}
   </table>
   </div>
-  {% include "partials/pagination.html" with page_obj=received_page extra_qs=received_qs_str page_param="recv_page" anchor="tbl-received" %}
+  {% include "partials/pagination.html" with page_obj=received_page extra_qs=received_qs_str page_param="recv_page" %}
 </div>
 
-<div class="card" id="tbl-returned" style="margin-top:1rem">
-  <h3>Stock sent back</h3>
+<div class="card accordion-section" id="sec-returned" style="margin-top:1rem" hidden>
+  <h3 class="no-print">Stock sent back</h3>
+  <h3 class="print-only">Stock Sent Back</h3>
   <div class="table-scroll">
   <table class="list">
     <tr><th>Date</th><th>Reference</th><th>To</th><th>Items</th><th>Status</th></tr>
@@ -115,11 +131,12 @@
     {% empty %}<tr><td colspan="5" style="color:var(--muted)">No returns in range.</td></tr>{% endfor %}
   </table>
   </div>
-  {% include "partials/pagination.html" with page_obj=returned_page extra_qs=returned_qs_str page_param="ret_page" anchor="tbl-returned" %}
+  {% include "partials/pagination.html" with page_obj=returned_page extra_qs=returned_qs_str page_param="ret_page" %}
 </div>
 
-<div class="card" id="tbl-sold" style="margin-top:1rem">
-  <h3>Sales made</h3>
+<div class="card accordion-section" id="sec-sold" style="margin-top:1rem" hidden>
+  <h3 class="no-print">Sales made</h3>
+  <h3 class="print-only">Sales Made</h3>
   <div class="table-scroll">
   <table class="list">
     <tr><th>Date</th><th>Receipt</th><th>Customer</th><th>Payment</th><th>Total</th><th></th></tr>
@@ -130,12 +147,22 @@
       <td>{{ s.customer_name|default:"Walk-in" }}</td>
       <td>{{ s.get_payment_method_display }}</td>
       <td>UGX {{ s.total|floatformat:0 }}</td>
-      <td><a class="btn ghost" style="padding:.35rem .7rem;min-height:auto" href="{% url 'sales:receipt' s.pk %}">Receipt</a></td>
+      <td class="no-print"><a class="btn ghost" style="padding:.35rem .7rem;min-height:auto" href="{% url 'sales:receipt' s.pk %}">Receipt</a></td>
     </tr>
     {% empty %}<tr><td colspan="6" style="color:var(--muted)">No sales in range.</td></tr>{% endfor %}
   </table>
   </div>
-  {% include "partials/pagination.html" with page_obj=sales_page extra_qs=sales_qs_str page_param="sold_page" anchor="tbl-sold" %}
+  {% include "partials/pagination.html" with page_obj=sales_page extra_qs=sales_qs_str page_param="sold_page" %}
 </div>
 {% include "partials/print_footer.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showSection(id, btn) {
+  document.querySelectorAll(".accordion-section").forEach(el => { el.hidden = (el.id !== id); });
+  document.querySelectorAll(".accordion-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+}
+</script>
 {% endblock %}

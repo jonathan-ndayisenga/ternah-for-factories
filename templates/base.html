@@ -221,6 +221,10 @@
       .table-scroll { overflow-x: visible; box-shadow: none; }
       .print-only { display: block; }
       table.list th { background: #EDF1F5 !important; color: var(--text) !important; }
+      /* an on-screen accordion section, collapsed via the hidden attribute,
+         always prints in full regardless of what's open on screen */
+      .accordion-section[hidden] { display: block !important; }
+      .accordion-toggle { display: none !important; }
 
       .print-letterhead { display: flex; justify-content: space-between; align-items: flex-start;
                            gap: 1.5rem; padding-bottom: .9rem; margin-bottom: 1rem;
