@@ -265,6 +265,48 @@ def _dispense_finished_goods_fefo(dist, product, qty, branch):
         DistributionLine.objects.create(distribution=dist, product=product, quantity=remaining, batch=None)
 
 
+def _reconcile_open_requests(biz, receiver_location, product, qty_sent):
+    """A distribution sent from the general Send Stock picker (not the Stock
+    Requests inbox's own Fulfil button) still needs to settle against
+    whatever that receiver has open on order — otherwise a rep's request
+    sits there claiming units are still owed after they already shipped by
+    the other route, and the two never reconcile. Applies oldest-request-
+    first, exactly like Fulfil does. Returns how much of qty_sent actually
+    matched an open request — the rest shipped beyond what anyone asked
+    for, which the caller can flag rather than silently absorb."""
+    remaining, matched = qty_sent, 0
+    open_requests = StockRequest.objects.filter(
+        business=biz, requester_location=receiver_location, status__in=("SUBMITTED", "PARTIAL")
+    ).order_by("created_at")
+    for sr in open_requests:
+        if remaining <= 0:
+            break
+        changed, new_lines = False, []
+        for l in sr.lines:
+            if remaining > 0 and l.get("product_id") == product.id:
+                qty = int(l.get("quantity", 0) or 0)
+                fulfilled = int(l.get("fulfilled", 0) or 0)
+                dropped = int(l.get("dropped", 0) or 0)
+                outstanding = max(qty - fulfilled - dropped, 0)
+                if outstanding > 0:
+                    take = min(remaining, outstanding)
+                    fulfilled += take
+                    remaining -= take
+                    matched += take
+                    changed = True
+                    l = {**l, "fulfilled": fulfilled}
+            new_lines.append(l)
+        if changed:
+            still_owed = any(
+                int(x.get("quantity", 0) or 0) - int(x.get("fulfilled", 0) or 0) - int(x.get("dropped", 0) or 0) > 0
+                for x in new_lines
+            )
+            sr.lines = new_lines
+            sr.status = "PARTIAL" if still_owed else "FULFILLED"
+            sr.save(update_fields=["lines", "status"])
+    return matched
+
+
 @distribution_staff_required
 def distribution_create(request):
     """Production sends stock to a receiver (rep or outlet). Only ACTIVE
@@ -291,6 +333,16 @@ def distribution_create(request):
              "expiry_date": b.expiry_date.strftime("%d %b %Y") if b.expiry_date else None, "remaining": b.remaining_quantity}
             for b in _batches_available(p, factory)
         ] if factory else []
+
+    # what each receiver actually has outstanding on an open request — shown
+    # live as they pick a product, so "requested 6, sent 8" gets caught
+    # before it ships, not discovered after
+    requested_map = {}
+    for sr in StockRequest.objects.filter(business=biz, status__in=("SUBMITTED", "PARTIAL")):
+        loc_map = requested_map.setdefault(str(sr.requester_location_id), {})
+        for l in sr.line_progress():
+            if l["remaining"] > 0:
+                loc_map[str(l["product_id"])] = loc_map.get(str(l["product_id"]), 0) + l["remaining"]
 
     error = None
     if request.method == "POST":
@@ -328,6 +380,7 @@ def distribution_create(request):
                 delivery_note_number=f"DN-{request.user.username[:4].upper()}-{date.today():%d%m%y}-{seq:03d}",
                 date=date.today(), status="SENT", created_by=request.user,
             )
+            over_bits = []
             for product, qty in lines:
                 store_item = StockItem.objects.filter(location=factory_store, product=product).first()
                 _dispense_finished_goods_fefo(dist, product, qty, factory)
@@ -336,11 +389,18 @@ def distribution_create(request):
                 StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,
                                              reason="DISTRIBUTION", reference=dist.delivery_note_number,
                                              moved_by=request.user, counterparty=receiver)
+                matched = _reconcile_open_requests(biz, receiver, product, qty)
+                if qty > matched:
+                    over_bits.append(f"{product.name} +{qty - matched}")
+            if over_bits:
+                messages.warning(request, f"{dist.delivery_note_number} sent — but it's more than {receiver} had "
+                                          f"outstanding on any open request: {', '.join(over_bits)}. Double check "
+                                          f"that was intentional.")
             return redirect("production:distributions")
 
     return render(request, "production/distribution_create.html", {
         "locations": locations, "active_products": active_products, "error": error, "batch_data": batch_data,
-        "factory": factory, "factories": _factories(biz),
+        "requested_map": requested_map, "factory": factory, "factories": _factories(biz),
     })
 
 

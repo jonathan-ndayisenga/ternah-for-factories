@@ -9,10 +9,12 @@
   <p style="color:var(--muted);font-size:.9rem;margin-bottom:.5rem">Only priced (active) products can be distributed — draft products aren't offered below.</p>
   {% if error %}<p style="color:var(--red);font-weight:600;font-size:.9rem;margin-bottom:.5rem">{{ error }}</p>{% endif %}
   {{ batch_data|json_script:"batchData" }}
+  {{ requested_map|json_script:"requestedMap" }}
   <form method="post" class="stack" id="distForm" onsubmit="return validateDistribution()">
     {% csrf_token %}
     <label>Send to</label>
-    <select name="location" required>
+    <select name="location" id="distLocation" required onchange="refreshAllRows()">
+      <option value="">Select a receiver…</option>
       {% for loc in locations %}
         <option value="{{ loc.id }}">{{ loc.branch.name }} — {{ loc.rep.username|default:loc.get_type_display }}</option>
       {% endfor %}
@@ -33,6 +35,7 @@
           <button type="button" class="btn ghost row-remove" onclick="removeCartRow(this)">&times;</button>
         </div>
         <p class="dist-available" style="color:var(--muted);font-size:.8rem;margin-top:.15rem">Pick a product to see stock available.</p>
+        <p class="dist-requested" style="font-size:.8rem;margin-top:.1rem"></p>
         <div class="dist-batch-breakdown" style="margin-top:.4rem"></div>
       </div>
     </div>
@@ -53,6 +56,7 @@
 </style>
 <script>
 function getBatchData() { return JSON.parse(document.getElementById("batchData").textContent); }
+function getRequestedMap() { return JSON.parse(document.getElementById("requestedMap").textContent); }
 
 function updateAvailable(sel) {
   const item = sel.closest(".cart-item");
@@ -63,10 +67,30 @@ function updateAvailable(sel) {
   qtyInput.max = stock > 0 ? stock : 1;
   if (parseInt(qtyInput.value) > stock) qtyInput.value = stock > 0 ? stock : 1;
   hint.textContent = opt && opt.value ? `Available: ${stock}` : "Pick a product to see stock available.";
+  renderRequestedHint(item);
   renderBatchBreakdown(item);
+}
+function renderRequestedHint(item) {
+  const sel = item.querySelector(".dist-product");
+  const qty = parseInt(item.querySelector(".dist-qty").value) || 0;
+  const hint = item.querySelector(".dist-requested");
+  const locId = document.getElementById("distLocation").value;
+  const opt = sel.selectedOptions[0];
+  if (!opt || !opt.value || !locId) { hint.textContent = ""; return; }
+  const requested = (getRequestedMap()[locId] || {})[opt.value] || 0;
+  if (!requested) { hint.textContent = ""; return; }
+  if (qty > requested) {
+    hint.innerHTML = `<span style="color:var(--red);font-weight:600">This location only has ${requested} of this still requested — you're sending ${qty}.</span>`;
+  } else {
+    hint.innerHTML = `<span style="color:var(--muted)">${requested} still requested by this location.</span>`;
+  }
+}
+function refreshAllRows() {
+  document.querySelectorAll("#cartRows .cart-item").forEach(renderRequestedHint);
 }
 function onQtyInput(input) {
   clampQty(input);
+  renderRequestedHint(input.closest(".cart-item"));
   renderBatchBreakdown(input.closest(".cart-item"));
 }
 function clampQty(input) {
@@ -99,6 +123,7 @@ function addCartRow() {
   item.querySelectorAll("select, input").forEach(el => { if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = "1"; });
   item.querySelector(".dist-qty").removeAttribute("max");
   item.querySelector(".dist-available").textContent = "Pick a product to see stock available.";
+  item.querySelector(".dist-requested").innerHTML = "";
   item.querySelector(".dist-batch-breakdown").innerHTML = "";
   rows.appendChild(item);
 }
