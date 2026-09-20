@@ -218,7 +218,12 @@ def notifications(request):
         if user.role == "SALES_REP":
             loc = getattr(user, "inventory", None)
             ret_qs = ret_qs.filter(from_location=loc) if loc else ret_qs.none()
-        elif user.role in ("MANAGER", "PRODUCTION"):
+        elif user.role == "MANAGER":
+            # both directions touching their branch: reps returning in to
+            # their outlet, and their own outlet's returns heading out to
+            # Production
+            ret_qs = ret_qs.filter(Q(to_location__branch=user.branch) | Q(from_location__branch=user.branch))
+        elif user.role == "PRODUCTION":
             ret_qs = ret_qs.filter(to_location__branch=user.branch)
         else:
             ret_qs = ret_qs.none()
@@ -228,7 +233,8 @@ def notifications(request):
         elif user.role == "PRODUCTION":
             dest = ("Distributions", reverse("production:distributions"))
         elif user.role == "MANAGER":
-            dest = ("Inventory", reverse("manager:inventory"))
+            dest = ("Return to Production", reverse("manager:return_to_production")) \
+                if r.to_location.type == "PRODUCTION_STORE" else ("Inventory", reverse("manager:inventory"))
         else:
             dest = (None, None)
         add(r.date, "stock_return", "Stock Return", r.pk, r.reference_number,

@@ -224,6 +224,77 @@ def inventory(request):
 
 
 @login_required
+@manager_required
+def return_to_production(request):
+    """The branch's own outlet sending stock straight to Production —
+    damaged goods, a batch that shouldn't have landed here. Manager-
+    initiated, so it's immediate — no approval step, unlike a rep's own
+    RETURN_TO_PRODUCTION request, since the manager already IS the
+    approving authority for their own branch. Still SENT, not landed,
+    until Production confirms receipt — same in-transit safety as every
+    other stock-moving flow here."""
+    biz = request.user.business
+    location = _outlet(request)
+    factories = Branch.objects.filter(business=biz, kind="FACTORY", is_active=True).order_by("name")
+    items = list(StockItem.objects.filter(location=location, quantity__gt=0).select_related("product").order_by("product__name")) \
+        if location else []
+
+    if request.method == "POST" and location:
+        idempotency_key = request.POST.get("idempotency_key", "").strip()
+        if idempotency_key and StockReturn.objects.filter(business=biz, idempotency_key=idempotency_key).exists():
+            messages.success(request, "That return was already sent.")
+            return redirect("manager:return_to_production")
+        factory = factories.filter(pk=request.POST.get("factory")).first() or factories.first()
+        factory_store = InventoryLocation.objects.filter(business=biz, branch=factory, type="PRODUCTION_STORE").first() \
+            if factory else None
+        if not factory_store:
+            messages.error(request, "There's no factory finished-goods store set up on this business yet.")
+            return redirect("manager:return_to_production")
+        lines = []
+        for pid, qty in zip(request.POST.getlist("product"), request.POST.getlist("quantity")):
+            try:
+                qty = int(qty)
+            except (TypeError, ValueError):
+                continue
+            if not pid or qty <= 0:
+                continue
+            item = StockItem.objects.filter(location=location, product_id=pid).first()
+            if not item:
+                continue
+            qty = min(qty, item.quantity)   # can't return more than actually on hand
+            if qty <= 0:
+                continue
+            lines.append((item, qty))
+        if lines:
+            seq = StockReturn.objects.filter(business=biz, date=timezone.localdate()).count() + 1
+            ret = StockReturn.objects.create(
+                business=biz, from_location=location, to_location=factory_store,
+                reference_number=f"RET-{request.user.username[:4].upper()}-{timezone.localdate():%d%m%y}-{seq:03d}",
+                date=timezone.localdate(), status="SENT", created_by=request.user,
+                note=request.POST.get("note", "").strip(), idempotency_key=idempotency_key,
+            )
+            for item, qty in lines:
+                StockReturnLine.objects.create(stock_return=ret, product=item.product, quantity=qty)
+                item.quantity -= qty
+                item.save(update_fields=["quantity"])
+                StockMovement.objects.create(location=location, product=item.product, quantity=-qty,
+                                             reason="RETURN", reference=ret.reference_number,
+                                             moved_by=request.user, counterparty=factory_store)
+            messages.success(request, f"Sent to {factory.name} — reference {ret.reference_number}. "
+                                      f"It'll land in their store once Production confirms.")
+        else:
+            messages.error(request, "Add at least one product with a quantity to return.")
+        return redirect("manager:return_to_production")
+
+    my_returns = StockReturn.objects.filter(from_location=location, to_location__type="PRODUCTION_STORE") \
+        .prefetch_related("lines__product").order_by("-date", "-id")[:20] if location else []
+    return render(request, "manager/return_to_production.html", {
+        "location": location, "items": items, "factories": factories, "my_returns": my_returns,
+        "idempotency_key": uuid.uuid4().hex,
+    })
+
+
+@login_required
 @manager_or_owner_required
 def stock_movements(request):
     """Every unit that moved, in or out — sale, distribution, batch landing —
