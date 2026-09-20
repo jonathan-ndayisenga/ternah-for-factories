@@ -22,7 +22,7 @@
 
 <div class="table-scroll">
 <table class="list">
-  <tr><th>Location</th><th>Sales</th><th>Receipts</th><th>Avg Sale</th><th>Stock Held (value)</th><th></th></tr>
+  <tr><th>Location</th><th>Sales</th><th>Receipts</th><th>Avg Sale</th><th>Stock Held (value)</th><th></th><th></th></tr>
   {% for r in rows %}
   <tr>
     <td><strong>{{ r.location.branch.name }}</strong> — {% if r.location.rep %}{{ r.location.rep.username }}{% else %}{{ r.location.get_type_display }}{% endif %}</td>
@@ -31,8 +31,9 @@
     <td>UGX {{ r.avg_sale|floatformat:0 }}</td>
     <td>UGX {{ r.stock_value|floatformat:0 }}</td>
     <td>{% if r.sitting_on_stock %}<span class="pill warning">Sitting on stock</span>{% endif %}</td>
+    <td><a class="btn ghost" style="padding:.35rem .7rem;min-height:auto;background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:rep_detail' r.location.pk %}">Details</a></td>
   </tr>
-  {% empty %}<tr><td colspan="6" style="color:var(--muted)">No outlets or reps yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="7" style="color:var(--muted)">No outlets or reps yet.</td></tr>{% endfor %}
 </table>
 </div>
 {% include "partials/print_footer.html" %}

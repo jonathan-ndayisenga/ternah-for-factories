@@ -174,7 +174,7 @@ def journal(request):
     branch = None if request.user.role == "OWNER" else request.user.branch
     entries = []
 
-    sales_qs = Sale.objects.filter(business=biz).select_related("served_by")
+    sales_qs = Sale.objects.filter(business=biz).select_related("served_by", "location__branch", "location__rep")
     if branch:
         sales_qs = sales_qs.filter(location__branch=branch)
     for s in sales_qs:
@@ -182,16 +182,18 @@ def journal(request):
         entries.append({
             "sort_date": s.created_at.date(), "when": s.created_at, "type": "Sale",
             "description": f"{s.receipt_number} to {who} — {s.get_payment_method_display()}",
-            "amount": s.total, "by": s.served_by,
+            "amount": s.total, "by": s.served_by, "location": s.location,
         })
 
-    payments_qs = DebtorPayment.objects.filter(debtor__business=biz).select_related("debtor", "received_by")
+    payments_qs = DebtorPayment.objects.filter(debtor__business=biz).select_related(
+        "debtor", "debtor__location__branch", "debtor__location__rep", "received_by")
     if branch:
         payments_qs = payments_qs.filter(debtor__location__branch=branch)
     for p in payments_qs:
         entries.append({
             "sort_date": p.created_at.date(), "when": p.created_at, "type": "Debt Payment",
             "description": f"{p.debtor.name} paid down their balance", "amount": p.amount, "by": p.received_by,
+            "location": p.debtor.location,
         })
 
     dist_qs = Distribution.objects.filter(business=biz, status="RECEIVED") \
@@ -206,7 +208,7 @@ def journal(request):
             "sort_date": d.updated_at.date(), "when": d.updated_at, "type": "Stock Received",
             "description": (f"{d.delivery_note_number}: {items} — sent by {sent_by} to {d.receiver_location}"
                             if items else f"{d.delivery_note_number} — sent by {sent_by} to {d.receiver_location}"),
-            "amount": None, "by": d.confirmed_by,
+            "amount": None, "by": d.confirmed_by, "location": d.receiver_location,
         })
 
     actions_qs = PendingAction.objects.filter(business=biz).exclude(status="PENDING") \
@@ -221,14 +223,14 @@ def journal(request):
             "amount": None, "by": a.reviewed_by,
         })
 
-    expenses_qs = Expense.objects.filter(business=biz).select_related("recorded_by")
+    expenses_qs = Expense.objects.filter(business=biz).select_related("recorded_by", "location__branch", "location__rep")
     if branch:
         expenses_qs = expenses_qs.filter(location__branch=branch)
     for e in expenses_qs:
         entries.append({
             "sort_date": e.date, "when": _as_datetime(e.date), "type": "Expense",
             "description": f"{e.category}" + (f" — {e.note}" if e.note else ""),
-            "amount": -e.amount, "by": e.recorded_by,
+            "amount": -e.amount, "by": e.recorded_by, "location": e.location,
         })
 
     if not branch:   # raw material purchases aren't branch-scoped — Owner's activity feed only

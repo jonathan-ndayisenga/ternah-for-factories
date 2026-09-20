@@ -12,7 +12,11 @@
   {% for u in users %}
   <tr>
     <td>
+      {% if u.role == "SALES_REP" and u.inventory %}
+      <a href="{% url 'reports:rep_detail' u.inventory.pk %}" style="font-weight:700;color:var(--ternah-blue);text-decoration:none">{{ u.username }}</a>
+      {% else %}
       <strong>{{ u.username }}</strong>
+      {% endif %}
       {% if u.first_name %}<br><span style="color:var(--muted);font-size:.8rem">{{ u.first_name }} {{ u.last_name }}</span>{% endif %}
     </td>
     <td><span class="role-pill role-{{ u.role|lower }}">{{ u.get_role_display }}</span></td>

@@ -10,14 +10,17 @@ from decimal import Decimal
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 
-from production.models import Dispensation, DistributionLine, Product, ProductionBatch, RawMaterial, RawMaterialPurchase
-from sales.models import Debtor, Expense, InventoryLocation, Sale, SaleItem, StockItem
+from production.models import Dispensation, Distribution, DistributionLine, Product, ProductionBatch, RawMaterial, RawMaterialPurchase
+from sales.models import (
+    Debtor, Expense, InventoryLocation, Sale, SaleItem, StockItem, StockRequest, StockReturn, StockReturnLine,
+)
 
 owner_required = user_passes_test(lambda u: u.is_authenticated and u.role == "OWNER")
+owner_or_manager_required = user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER"))
 
 
 def _biz(request):
@@ -314,6 +317,69 @@ def rep_outlet_performance(request):
     return render(request, "reports/rep_outlet_performance.html", {
         "rows": rows, "date_from": date_from, "date_to": date_to,
         "print_title": "Rep & Outlet Performance",
+    })
+
+
+@login_required
+@owner_or_manager_required
+def rep_detail(request, pk):
+    """One rep or outlet's own story: what they asked Production for, what
+    actually landed, what they sent back, and what they sold — in numbers,
+    each one a real list right below it, not just a total to take on faith.
+    A manager only ever sees their own branch's people; Owner sees anyone."""
+    biz = _biz(request)
+    location = get_object_or_404(InventoryLocation, pk=pk, business=biz, type__in=("REP", "OUTLET"))
+    if request.user.role == "MANAGER" and location.branch_id != request.user.branch_id:
+        raise Http404
+    date_from = request.GET.get("from", "")
+    date_to = request.GET.get("to", "")
+
+    requests_qs = StockRequest.objects.filter(business=biz, requester_location=location).order_by("-created_at")
+    if date_from:
+        requests_qs = requests_qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        requests_qs = requests_qs.filter(created_at__date__lte=date_to)
+    requested_total = sum(int(l.get("quantity", 0) or 0) for r in requests_qs for l in r.lines)
+    for r in requests_qs:
+        r.lines_display = [{**l, "product": Product.objects.filter(pk=l["product_id"]).first()} for l in r.lines]
+
+    received_qs = Distribution.objects.filter(business=biz, receiver_location=location, status="RECEIVED") \
+        .select_related("sender_branch").prefetch_related("lines__product").order_by("-date", "-id")
+    if date_from:
+        received_qs = received_qs.filter(date__gte=date_from)
+    if date_to:
+        received_qs = received_qs.filter(date__lte=date_to)
+    received_total = DistributionLine.objects.filter(distribution__in=received_qs).aggregate(s=Sum("quantity"))["s"] or 0
+
+    returned_qs = StockReturn.objects.filter(business=biz, from_location=location) \
+        .select_related("to_location__branch").prefetch_related("lines__product").order_by("-date", "-id")
+    if date_from:
+        returned_qs = returned_qs.filter(date__gte=date_from)
+    if date_to:
+        returned_qs = returned_qs.filter(date__lte=date_to)
+    from sales.models import StockReturnLine
+    returned_total = StockReturnLine.objects.filter(stock_return__in=returned_qs).aggregate(s=Sum("quantity"))["s"] or 0
+
+    sales_qs = Sale.objects.filter(business=biz, location=location, is_reversed=False).select_related("served_by").order_by("-created_at")
+    if date_from:
+        sales_qs = sales_qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        sales_qs = sales_qs.filter(created_at__date__lte=date_to)
+    sales_agg = sales_qs.aggregate(total=Sum("total"), count=Count("id"))
+    sold_total, sold_count = sales_agg["total"] or Decimal("0"), sales_agg["count"] or 0
+
+    stock_items = list(StockItem.objects.filter(location=location).select_related("product").order_by("product__name"))
+    for i in stock_items:
+        i.value = i.quantity * i.buying_price
+
+    return render(request, "reports/rep_detail.html", {
+        "location": location, "date_from": date_from, "date_to": date_to,
+        "requests": requests_qs[:50], "requested_total": requested_total, "requested_count": requests_qs.count(),
+        "received": received_qs[:50], "received_total": received_total, "received_count": received_qs.count(),
+        "returned": returned_qs[:50], "returned_total": returned_total, "returned_count": returned_qs.count(),
+        "sales": sales_qs[:50], "sold_total": sold_total, "sold_count": sold_count,
+        "stock_items": stock_items,
+        "print_title": f"Performance — {location.rep.username if location.rep_id else location}",
     })
 
 

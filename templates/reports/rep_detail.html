@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Performance — {{ location }}{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <h2>{{ location.rep.username|default:location }} — {{ location.branch.name }}</h2>
+  <span class="spacer"></span>
+  <button class="btn" onclick="window.print()">Print</button>
+</div>
+
+{% include "partials/print_letterhead.html" with print_title=print_title %}
+
+<form method="get" class="no-print" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
+  <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">From</label>
+    <input name="from" type="date" value="{{ date_from }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
+  <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">To</label>
+    <input name="to" type="date" value="{{ date_to }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
+  <button class="btn">Filter</button>
+  {% if date_from or date_to %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:rep_detail' location.pk %}">Clear</a>{% endif %}
+</form>
+
+<div class="grid cards-4">
+  <a class="card" style="text-decoration:none;color:inherit" href="#tbl-requested">
+    <h3>Requested</h3>
+    <div class="big" style="font-size:1.4rem">{{ requested_total }}</div>
+    <div style="color:var(--muted);font-size:.8rem">{{ requested_count }} request{{ requested_count|pluralize }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit" href="#tbl-received">
+    <h3>Received</h3>
+    <div class="big" style="font-size:1.4rem;color:var(--green)">{{ received_total }}</div>
+    <div style="color:var(--muted);font-size:.8rem">{{ received_count }} deliver{{ received_count|pluralize:"y,ies" }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit" href="#tbl-returned">
+    <h3>Returned</h3>
+    <div class="big" style="font-size:1.4rem;color:var(--amber)">{{ returned_total }}</div>
+    <div style="color:var(--muted);font-size:.8rem">{{ returned_count }} return{{ returned_count|pluralize }}</div>
+  </a>
+  <a class="card" style="text-decoration:none;color:inherit" href="#tbl-sold">
+    <h3>Sold</h3>
+    <div class="big" style="font-size:1.4rem">UGX {{ sold_total|floatformat:0 }}</div>
+    <div style="color:var(--muted);font-size:.8rem">{{ sold_count }} sale{{ sold_count|pluralize }}</div>
+  </a>
+</div>
+
+<div class="card" style="margin-top:1rem">
+  <h3>Stock on hand right now</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Product</th><th>Quantity</th><th>Cost</th><th>Value</th></tr>
+    {% for i in stock_items %}
+    <tr><td>{{ i.product.name }}</td><td>{{ i.quantity }}</td><td>UGX {{ i.buying_price|floatformat:2 }}</td>
+      <td>UGX {{ i.value|floatformat:0 }}</td></tr>
+    {% empty %}<tr><td colspan="4" style="color:var(--muted)">No stock recorded.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card" id="tbl-requested" style="margin-top:1rem">
+  <h3>Stock requested from Production</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Items</th><th>Status</th></tr>
+    {% for r in requests %}
+    <tr>
+      <td>{{ r.created_at|date:"d M Y" }}</td>
+      <td>{% for l in r.lines_display %}{{ l.product.name|default:"Unknown product" }} ×{{ l.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        {% if r.status == "SUBMITTED" %}<span class="pill warning">Awaiting Production</span>
+        {% elif r.status == "PARTIAL" %}<span class="pill warning">Partly sent</span>
+        {% elif r.status == "FULFILLED" %}<span class="pill active">Fulfilled</span>
+        {% else %}<span class="pill locked">{{ r.get_status_display }}</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="3" style="color:var(--muted)">No requests in range.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card" id="tbl-received" style="margin-top:1rem">
+  <h3>Stock actually received</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Delivery Note</th><th>From</th><th>Items</th></tr>
+    {% for d in received %}
+    <tr>
+      <td>{{ d.date|date:"d M Y" }}</td>
+      <td>{{ d.delivery_note_number }}</td>
+      <td>{{ d.sender_branch.name|default:"—" }}</td>
+      <td>{% for line in d.lines.all %}{{ line.product.name }} ×{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+    </tr>
+    {% empty %}<tr><td colspan="4" style="color:var(--muted)">No deliveries in range.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card" id="tbl-returned" style="margin-top:1rem">
+  <h3>Stock sent back</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Reference</th><th>To</th><th>Items</th><th>Status</th></tr>
+    {% for r in returned %}
+    <tr>
+      <td>{{ r.date|date:"d M Y" }}</td>
+      <td>{{ r.reference_number }}</td>
+      <td>{{ r.to_location.branch.name }}</td>
+      <td>{% for line in r.lines.all %}{{ line.product.name }} ×{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        {% if r.status == "RECEIVED" %}<span class="pill active">Received</span>
+        {% elif r.status == "DISPUTED" %}<span class="pill locked">Disputed</span>
+        {% else %}<span class="pill warning">Sent</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">No returns in range.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+
+<div class="card" id="tbl-sold" style="margin-top:1rem">
+  <h3>Sales made</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Date</th><th>Receipt</th><th>Customer</th><th>Payment</th><th>Total</th><th></th></tr>
+    {% for s in sales %}
+    <tr{% if s.is_reversed %} style="opacity:.5"{% endif %}>
+      <td>{{ s.created_at|date:"d M Y, H:i" }}</td>
+      <td>{{ s.receipt_number }}</td>
+      <td>{{ s.customer_name|default:"Walk-in" }}</td>
+      <td>{{ s.get_payment_method_display }}</td>
+      <td>UGX {{ s.total|floatformat:0 }}</td>
+      <td><a class="btn ghost" style="padding:.35rem .7rem;min-height:auto" href="{% url 'sales:receipt' s.pk %}">Receipt</a></td>
+    </tr>
+    {% empty %}<tr><td colspan="6" style="color:var(--muted)">No sales in range.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
+{% include "partials/print_footer.html" %}
+{% endblock %}
