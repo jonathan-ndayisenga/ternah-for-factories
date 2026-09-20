@@ -223,9 +223,17 @@ def chart_monthly_gp(request):
 @login_required
 def production_report(request):
     """Owner-only: every batch ever run, cost and all."""
+    date_from = request.GET.get("from", "")
+    date_to = request.GET.get("to", "")
     batches = ProductionBatch.objects.filter(business=_biz(request)) \
         .select_related("product", "formula", "branch").order_by("-date", "-id")
-    return render(request, "reports/production_report.html", {"batches": batches})
+    if date_from:
+        batches = batches.filter(date__gte=date_from)
+    if date_to:
+        batches = batches.filter(date__lte=date_to)
+    return render(request, "reports/production_report.html", {
+        "batches": batches, "date_from": date_from, "date_to": date_to,
+    })
 
 
 @login_required
