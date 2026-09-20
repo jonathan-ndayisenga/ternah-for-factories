@@ -59,7 +59,7 @@
   <div class="table-scroll">
   <table class="list">
     <tr><th>Date</th><th>Items</th><th>Status</th></tr>
-    {% for r in requests %}
+    {% for r in requests_page %}
     <tr>
       <td>{{ r.created_at|date:"d M Y" }}</td>
       <td>{% for l in r.lines_display %}{{ l.product.name|default:"Unknown product" }} ×{{ l.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
@@ -73,23 +73,26 @@
     {% empty %}<tr><td colspan="3" style="color:var(--muted)">No requests in range.</td></tr>{% endfor %}
   </table>
   </div>
+  {% include "partials/pagination.html" with page_obj=requests_page extra_qs=requests_qs_str page_param="req_page" anchor="tbl-requested" %}
 </div>
 
 <div class="card" id="tbl-received" style="margin-top:1rem">
   <h3>Stock actually received</h3>
   <div class="table-scroll">
   <table class="list">
-    <tr><th>Date</th><th>Delivery Note</th><th>From</th><th>Items</th></tr>
-    {% for d in received %}
+    <tr><th>Date</th><th>Delivery Note</th><th>From</th><th>Items</th><th></th></tr>
+    {% for d in received_page %}
     <tr>
       <td>{{ d.date|date:"d M Y" }}</td>
       <td>{{ d.delivery_note_number }}</td>
       <td>{{ d.sender_branch.name|default:"—" }}</td>
       <td>{% for line in d.lines.all %}{{ line.product.name }} ×{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>{% if d.note %}<span class="pill warning" title="{{ d.note }}">⚑ {{ d.note }}</span>{% endif %}</td>
     </tr>
-    {% empty %}<tr><td colspan="4" style="color:var(--muted)">No deliveries in range.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="5" style="color:var(--muted)">No deliveries in range.</td></tr>{% endfor %}
   </table>
   </div>
+  {% include "partials/pagination.html" with page_obj=received_page extra_qs=received_qs_str page_param="recv_page" anchor="tbl-received" %}
 </div>
 
 <div class="card" id="tbl-returned" style="margin-top:1rem">
@@ -97,7 +100,7 @@
   <div class="table-scroll">
   <table class="list">
     <tr><th>Date</th><th>Reference</th><th>To</th><th>Items</th><th>Status</th></tr>
-    {% for r in returned %}
+    {% for r in returned_page %}
     <tr>
       <td>{{ r.date|date:"d M Y" }}</td>
       <td>{{ r.reference_number }}</td>
@@ -112,6 +115,7 @@
     {% empty %}<tr><td colspan="5" style="color:var(--muted)">No returns in range.</td></tr>{% endfor %}
   </table>
   </div>
+  {% include "partials/pagination.html" with page_obj=returned_page extra_qs=returned_qs_str page_param="ret_page" anchor="tbl-returned" %}
 </div>
 
 <div class="card" id="tbl-sold" style="margin-top:1rem">
@@ -119,7 +123,7 @@
   <div class="table-scroll">
   <table class="list">
     <tr><th>Date</th><th>Receipt</th><th>Customer</th><th>Payment</th><th>Total</th><th></th></tr>
-    {% for s in sales %}
+    {% for s in sales_page %}
     <tr{% if s.is_reversed %} style="opacity:.5"{% endif %}>
       <td>{{ s.created_at|date:"d M Y, H:i" }}</td>
       <td>{{ s.receipt_number }}</td>
@@ -131,6 +135,7 @@
     {% empty %}<tr><td colspan="6" style="color:var(--muted)">No sales in range.</td></tr>{% endfor %}
   </table>
   </div>
+  {% include "partials/pagination.html" with page_obj=sales_page extra_qs=sales_qs_str page_param="sold_page" anchor="tbl-sold" %}
 </div>
 {% include "partials/print_footer.html" %}
 {% endblock %}

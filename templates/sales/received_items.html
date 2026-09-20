@@ -20,7 +20,10 @@
     <tr>
       <td>{{ d.date|date:"d M Y" }}</td>
       <td>{{ d.delivery_note_number }}</td>
-      <td>{% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        {% for line in d.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        {% if d.note %}<br><span style="color:var(--red);font-size:.78rem;font-weight:600">⚑ {{ d.note }}</span>{% endif %}
+      </td>
       <td>
         <form method="post" action="{% url 'sales:received_item_confirm' d.pk %}" style="display:inline-flex;gap:.4rem">
           {% csrf_token %}

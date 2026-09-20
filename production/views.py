@@ -271,13 +271,28 @@ def _reconcile_open_requests(biz, receiver_location, product, qty_sent):
     whatever that receiver has open on order — otherwise a rep's request
     sits there claiming units are still owed after they already shipped by
     the other route, and the two never reconcile. Applies oldest-request-
-    first, exactly like Fulfil does. Returns how much of qty_sent actually
-    matched an open request — the rest shipped beyond what anyone asked
-    for, which the caller can flag rather than silently absorb."""
-    remaining, matched = qty_sent, 0
+    first, exactly like Fulfil does. Returns (matched, outstanding_before):
+    matched is how much of qty_sent actually offset an open request — the
+    rest shipped beyond what anyone asked for; outstanding_before is what
+    was owed on this product before this shipment touched it at all — if
+    that's more than qty_sent, this shipment fell short of the full ask,
+    even though every unit sent was legitimately applied. The caller flags
+    either direction rather than silently absorbing it."""
     open_requests = StockRequest.objects.filter(
         business=biz, requester_location=receiver_location, status__in=("SUBMITTED", "PARTIAL")
     ).order_by("created_at")
+    open_requests = list(open_requests)
+
+    outstanding_before = 0
+    for sr in open_requests:
+        for l in sr.lines:
+            if l.get("product_id") == product.id:
+                qty = int(l.get("quantity", 0) or 0)
+                fulfilled = int(l.get("fulfilled", 0) or 0)
+                dropped = int(l.get("dropped", 0) or 0)
+                outstanding_before += max(qty - fulfilled - dropped, 0)
+
+    remaining, matched = qty_sent, 0
     for sr in open_requests:
         if remaining <= 0:
             break
@@ -304,7 +319,7 @@ def _reconcile_open_requests(biz, receiver_location, product, qty_sent):
             sr.lines = new_lines
             sr.status = "PARTIAL" if still_owed else "FULFILLED"
             sr.save(update_fields=["lines", "status"])
-    return matched
+    return matched, outstanding_before
 
 
 @distribution_staff_required
@@ -380,7 +395,7 @@ def distribution_create(request):
                 delivery_note_number=f"DN-{request.user.username[:4].upper()}-{date.today():%d%m%y}-{seq:03d}",
                 date=date.today(), status="SENT", created_by=request.user,
             )
-            over_bits = []
+            over_bits, under_bits = [], []
             for product, qty in lines:
                 store_item = StockItem.objects.filter(location=factory_store, product=product).first()
                 _dispense_finished_goods_fefo(dist, product, qty, factory)
@@ -389,13 +404,25 @@ def distribution_create(request):
                 StockMovement.objects.create(location=factory_store, product=product, quantity=-qty,
                                              reason="DISTRIBUTION", reference=dist.delivery_note_number,
                                              moved_by=request.user, counterparty=receiver)
-                matched = _reconcile_open_requests(biz, receiver, product, qty)
+                matched, outstanding_before = _reconcile_open_requests(biz, receiver, product, qty)
                 if qty > matched:
                     over_bits.append(f"{product.name} +{qty - matched}")
+                if outstanding_before > 0 and qty < outstanding_before:
+                    under_bits.append(f"{product.name} short by {outstanding_before - qty}")
+
+            # a real, permanent flag on the distribution itself — not just a
+            # one-time toast — so it's visible later on the Distributions
+            # list and on the rep's own performance page, wherever this
+            # delivery shows up again
+            note_bits = []
             if over_bits:
-                messages.warning(request, f"{dist.delivery_note_number} sent — but it's more than {receiver} had "
-                                          f"outstanding on any open request: {', '.join(over_bits)}. Double check "
-                                          f"that was intentional.")
+                note_bits.append(f"Sent MORE than requested: {', '.join(over_bits)}.")
+            if under_bits:
+                note_bits.append(f"Sent LESS than requested: {', '.join(under_bits)}.")
+            if note_bits:
+                dist.note = " ".join(note_bits)
+                dist.save(update_fields=["note"])
+                messages.warning(request, f"{dist.delivery_note_number} sent — {' '.join(note_bits)} Double check that was intentional.")
             return redirect("production:distributions")
 
     return render(request, "production/distribution_create.html", {
@@ -1071,6 +1098,14 @@ def stock_request_fulfill(request, pk):
     still_owed = any(l["quantity"] - l["fulfilled"] - l["dropped"] > 0 for l in new_lines)
     stock_request.status = "PARTIAL" if still_owed else "FULFILLED"
     stock_request.save(update_fields=["lines", "status"])
+
+    # a real, permanent flag on the distribution itself — not just a
+    # one-time toast — so a shortfall is still visible later on the
+    # Distributions list and the rep's own performance page
+    if short_bits:
+        flag = f"Sent LESS than requested: {', '.join(short_bits)}."
+        dist.note = f"{dist.note} {flag}".strip() if dist.note else flag
+        dist.save(update_fields=["note"])
 
     msg = f"{dist.delivery_note_number} sent: {', '.join(sent_bits)}."
     if short_bits:

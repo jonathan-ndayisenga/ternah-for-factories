@@ -357,7 +357,6 @@ def rep_detail(request, pk):
         returned_qs = returned_qs.filter(date__gte=date_from)
     if date_to:
         returned_qs = returned_qs.filter(date__lte=date_to)
-    from sales.models import StockReturnLine
     returned_total = StockReturnLine.objects.filter(stock_return__in=returned_qs).aggregate(s=Sum("quantity"))["s"] or 0
 
     sales_qs = Sale.objects.filter(business=biz, location=location, is_reversed=False).select_related("served_by").order_by("-created_at")
@@ -372,12 +371,27 @@ def rep_detail(request, pk):
     for i in stock_items:
         i.value = i.quantity * i.buying_price
 
+    def page(qs, param):
+        page_obj = Paginator(qs, 15).get_page(request.GET.get(param))
+        qd = request.GET.copy()
+        qd.pop(param, None)
+        return page_obj, qd.urlencode()
+
+    requests_page, requests_qs_str = page(requests_qs, "req_page")
+    received_page, received_qs_str = page(received_qs, "recv_page")
+    returned_page, returned_qs_str = page(returned_qs, "ret_page")
+    sales_page, sales_qs_str = page(sales_qs, "sold_page")
+
     return render(request, "reports/rep_detail.html", {
         "location": location, "date_from": date_from, "date_to": date_to,
-        "requests": requests_qs[:50], "requested_total": requested_total, "requested_count": requests_qs.count(),
-        "received": received_qs[:50], "received_total": received_total, "received_count": received_qs.count(),
-        "returned": returned_qs[:50], "returned_total": returned_total, "returned_count": returned_qs.count(),
-        "sales": sales_qs[:50], "sold_total": sold_total, "sold_count": sold_count,
+        "requests_page": requests_page, "requests_qs_str": requests_qs_str,
+        "requested_total": requested_total, "requested_count": requests_qs.count(),
+        "received_page": received_page, "received_qs_str": received_qs_str,
+        "received_total": received_total, "received_count": received_qs.count(),
+        "returned_page": returned_page, "returned_qs_str": returned_qs_str,
+        "returned_total": returned_total, "returned_count": returned_qs.count(),
+        "sales_page": sales_page, "sales_qs_str": sales_qs_str,
+        "sold_total": sold_total, "sold_count": sold_count,
         "stock_items": stock_items,
         "print_title": f"Performance — {location.rep.username if location.rep_id else location}",
     })
