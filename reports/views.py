@@ -5,7 +5,7 @@ each card lazily with HTMX. Everything is branch-aware so the owner's
 per-branch view 'makes sense': users -> branch, rep inventories -> branch,
 sales/expenses/debtors -> location -> branch.
 """
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
@@ -270,6 +270,14 @@ def debtors_report(request):
     })
 
 
+#  Fixed-order categorical palette (dataviz skill default) — assigned by
+#  rank, never cycled or reassigned when the location list changes, so a
+#  location keeps its color across filters. Line charts only need the
+#  adjacent-pair CVD gate, which this order clears across all 8 slots.
+_REP_CHART_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+                     "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
+
+
 @login_required
 @owner_required
 def rep_outlet_performance(request):
@@ -314,8 +322,41 @@ def rep_outlet_performance(request):
         })
     rows.sort(key=lambda r: -r["total_sales"])
 
+    # daily sales per location, so performance across the board reads at a
+    # glance before drilling into any one row — capped to the top 8 (the
+    # palette's own safe limit) and to 90 days of granularity so a wide-open
+    # filter still renders as a real chart, not a wall of points
+    if date_from:
+        range_start = date.fromisoformat(date_from)
+    elif date_to:
+        range_start = date.fromisoformat(date_to) - timedelta(days=29)
+    else:
+        range_start = timezone.localdate() - timedelta(days=29)
+    range_end = date.fromisoformat(date_to) if date_to else timezone.localdate()
+    if (range_end - range_start).days > 89:
+        range_start = range_end - timedelta(days=89)
+    days = [range_start + timedelta(days=i) for i in range((range_end - range_start).days + 1)]
+
+    top_rows = [r for r in rows if r["total_sales"] > 0][:8]
+    chart_datasets = []
+    for i, r in enumerate(top_rows):
+        loc = r["location"]
+        daily = {
+            e["created_at__date"]: float(e["s"]) for e in
+            Sale.objects.filter(business=biz, is_reversed=False, location=loc,
+                                created_at__date__gte=range_start, created_at__date__lte=range_end)
+            .values("created_at__date").annotate(s=Sum("total"))
+        }
+        label = f"{loc.branch.name} — {loc.rep.username}" if loc.rep_id else loc.branch.name
+        chart_datasets.append({
+            "label": label, "color": _REP_CHART_COLORS[i % len(_REP_CHART_COLORS)],
+            "data": [daily.get(d, 0) for d in days],
+        })
+
     return render(request, "reports/rep_outlet_performance.html", {
         "rows": rows, "date_from": date_from, "date_to": date_to,
+        "chart_labels": [d.strftime("%d %b") for d in days], "chart_datasets": chart_datasets,
+        "chart_omitted": max(0, len([r for r in rows if r["total_sales"] > 0]) - len(top_rows)),
         "print_title": "Rep & Outlet Performance",
     })
 

@@ -18,6 +18,18 @@
   {% if date_from or date_to %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:rep_outlet_performance' %}">All time</a>{% endif %}
 </form>
 
+<div class="card no-print" style="margin-bottom:1rem">
+  <h3>Sales — day by day</h3>
+  {% if chart_datasets %}
+  {{ chart_labels|json_script:"chartLabels" }}
+  {{ chart_datasets|json_script:"chartDatasets" }}
+  <div class="chart-wrap" style="height:320px"><canvas id="repChart"></canvas></div>
+  {% if chart_omitted %}<p style="color:var(--muted);font-size:.78rem;margin-top:.5rem">+{{ chart_omitted }} more location{{ chart_omitted|pluralize }} not shown — top 8 by sales only.</p>{% endif %}
+  {% else %}
+  <p style="color:var(--muted)">No sales in this window to chart.</p>
+  {% endif %}
+</div>
+
 <p style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">Ranked by sales. "Sitting on stock" flags a location holding more stock value than it has sold in this window — not proof of a problem, but worth a look.</p>
 
 <div class="table-scroll">
@@ -37,4 +49,30 @@
 </table>
 </div>
 {% include "partials/print_footer.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const repChartEl = document.getElementById("repChart");
+if (repChartEl) {
+  const labels = JSON.parse(document.getElementById("chartLabels").textContent);
+  const datasets = JSON.parse(document.getElementById("chartDatasets").textContent);
+  new Chart(repChartEl, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: datasets.map(d => ({
+        label: d.label, data: d.data, borderColor: d.color, backgroundColor: d.color,
+        borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, pointHitRadius: 10, tension: 0.15, fill: false,
+      })),
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 12, usePointStyle: true } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => "UGX " + v.toLocaleString() } } },
+    },
+  });
+}
+</script>
 {% endblock %}
