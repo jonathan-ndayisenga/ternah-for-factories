@@ -25,7 +25,8 @@
       {% csrf_token %}
       <div style="display:flex;gap:.5rem">
         <button class="btn" name="decision" value="approve" style="flex:1"
-                {% if a.action_type == "SALE_REVERSAL" %}onclick="return confirm('Approve this sale reversal? The items go back into stock and a correcting entry posts to the books immediately — this can\'t be undone from here.')"{% endif %}>Approve</button>
+                {% if a.action_type == "SALE_REVERSAL" %}onclick="return confirm('Approve this sale reversal? The items go back into stock and a correcting entry posts to the books immediately — this can\'t be undone from here.')"
+                {% elif a.action_type == "RETURN_TO_PRODUCTION" %}onclick="return confirm('Approve this return to Production? The stock leaves this rep right away and heads to the factory, pending their confirmation.')"{% endif %}>Approve</button>
         <button class="btn ghost" name="decision" value="reject" style="flex:1;background:#FADBD8;color:var(--red)"
                 onclick="return confirmReject(this)">Reject</button>
       </div>

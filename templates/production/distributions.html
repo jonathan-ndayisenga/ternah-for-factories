@@ -6,6 +6,45 @@
   <span class="spacer"></span>
   <a class="btn" href="{% url 'production:distribution_create' %}">+ Send Stock</a>
 </div>
+
+{% if incoming_returns %}
+<div class="card" style="margin-bottom:1rem">
+  <h3>Returns from reps — awaiting confirmation</h3>
+  <div class="table-scroll">
+  <table class="list">
+    <tr><th>Reference</th><th>Date</th><th>From</th><th>To</th><th>Items</th><th>Status</th><th></th></tr>
+    {% for r in incoming_returns %}
+    <tr>
+      <td>{{ r.reference_number }}</td>
+      <td>{{ r.date|date:"d M Y" }}</td>
+      <td>{{ r.from_location.rep.username|default:r.from_location.branch.name }}</td>
+      <td>{{ r.to_location.branch.name }}</td>
+      <td>
+        {% for line in r.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        {% if r.note %}<br><span style="color:var(--muted);font-size:.78rem;font-style:italic">{{ r.note }}</span>{% endif %}
+      </td>
+      <td>
+        {% if r.status == "DISPUTED" %}<span class="pill locked">Disputed</span>{% else %}<span class="pill warning">Sent</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" action="{% url 'sales:stock_return_confirm' r.pk %}" style="display:inline-flex;gap:.4rem">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{% url 'production:distributions' %}">
+          {% if r.status == "DISPUTED" %}
+          <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto" onclick="return confirm('Resolve this dispute and confirm receipt after all? It will land in the factory store.')">Resolve — mark received</button>
+          {% else %}
+          <button class="btn" name="action" value="confirm" style="padding:.4rem .7rem;min-height:auto">Confirm</button>
+          <button class="btn ghost" name="action" value="dispute" style="padding:.4rem .7rem;min-height:auto;background:#FADBD8;color:var(--red)">Dispute</button>
+          {% endif %}
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="table-scroll">
 <table class="list">
   <tr><th>Delivery Note</th><th>Date</th><th>From</th><th>Sent By</th><th>Sent To</th><th>Items</th><th>Status</th><th>Received By</th><th></th></tr>

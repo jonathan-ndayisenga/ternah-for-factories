@@ -11,11 +11,12 @@ from django.db.models import F
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
+from core.models import Branch
 from finance.services import reverse_sale
 from production.models import Distribution, Product
 from sales.models import (
     Debtor, DebtorPayment, DebtorPaymentAllocation, InventoryLocation, OutletTransfer, PendingAction, Sale,
-    StockItem, StockMovement, StockReturn,
+    StockItem, StockMovement, StockReturn, StockReturnLine,
 )
 
 manager_required = user_passes_test(lambda u: u.is_authenticated and u.role == "MANAGER")
@@ -83,7 +84,14 @@ def approvals(request):
         business=request.user.business, status="PENDING", requested_by__branch=branch
     ).select_related("requested_by").order_by("created_at")
     for action in actions:
-        action.payload_display = [(k.replace("_", " ").title(), v) for k, v in action.payload.items() if k != "sale_id"]
+        if action.action_type == "RETURN_TO_PRODUCTION":
+            items = ", ".join(f"{l['product_name']} ×{l['quantity']}" for l in action.payload.get("lines", []))
+            factory = Branch.objects.filter(pk=action.payload.get("factory_branch_id")).first()
+            action.payload_display = [("Items", items), ("To", factory.name if factory else "—")]
+            if action.payload.get("note"):
+                action.payload_display.append(("Note", action.payload["note"]))
+        else:
+            action.payload_display = [(k.replace("_", " ").title(), v) for k, v in action.payload.items() if k != "sale_id"]
     return render(request, "manager/approvals.html", {"actions": actions})
 
 
@@ -118,6 +126,47 @@ def _execute_sale_reversal(action, manager):
     return True, f"{sale.receipt_number} reversed — stock is back and the books have a correcting entry."
 
 
+def _execute_return_to_production(action, manager):
+    """The real effect, only once a manager approves: stock actually leaves
+    the rep's own inventory and a real StockReturn starts its trip to the
+    factory — still SENT, not landed, until Production confirms receipt on
+    their own end, same in-transit safety as every other stock-moving flow
+    here. Nothing about the rep's stock changes just from asking."""
+    payload = action.payload
+    location = InventoryLocation.objects.filter(pk=payload.get("from_location_id"), business=action.business).first()
+    factory_store = InventoryLocation.objects.filter(
+        business=action.business, branch_id=payload.get("factory_branch_id"), type="PRODUCTION_STORE").first()
+    if not location or not factory_store:
+        return False, "That rep's inventory or the factory store no longer exists."
+
+    lines = []
+    for l in payload.get("lines", []):
+        item = StockItem.objects.filter(location=location, product_id=l["product_id"]).first()
+        if not item:
+            continue
+        qty = min(int(l["quantity"]), item.quantity)   # can't take more than they actually still hold by now
+        if qty > 0:
+            lines.append((item, qty))
+    if not lines:
+        return False, "None of the requested stock is still on hand at that location."
+
+    seq = StockReturn.objects.filter(business=action.business, date=timezone.localdate()).count() + 1
+    ret = StockReturn.objects.create(
+        business=action.business, from_location=location, to_location=factory_store,
+        reference_number=f"RET-{action.requested_by.username[:4].upper()}-{timezone.localdate():%d%m%y}-{seq:03d}",
+        date=timezone.localdate(), status="SENT", created_by=action.requested_by,
+        note=payload.get("note", ""),
+    )
+    for item, qty in lines:
+        StockReturnLine.objects.create(stock_return=ret, product=item.product, quantity=qty)
+        item.quantity -= qty
+        item.save(update_fields=["quantity"])
+        StockMovement.objects.create(location=location, product=item.product, quantity=-qty,
+                                     reason="RETURN", reference=ret.reference_number,
+                                     moved_by=manager, counterparty=factory_store)
+    return True, f"Approved — {ret.reference_number} is on its way to {factory_store.branch.name}, pending their confirmation."
+
+
 @login_required
 @manager_required
 def approval_decide(request, pk):
@@ -128,6 +177,12 @@ def approval_decide(request, pk):
         if decision == "approve":
             if action.action_type == "SALE_REVERSAL":
                 ok, msg = _execute_sale_reversal(action, request.user)
+                if not ok:
+                    messages.error(request, msg)
+                    return redirect("manager:approvals")
+                messages.success(request, msg)
+            elif action.action_type == "RETURN_TO_PRODUCTION":
+                ok, msg = _execute_return_to_production(action, request.user)
                 if not ok:
                     messages.error(request, msg)
                     return redirect("manager:approvals")

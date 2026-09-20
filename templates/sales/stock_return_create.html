@@ -7,16 +7,31 @@
 
 {% if not location %}
 <div class="card"><p style="color:var(--muted)">No inventory location is set up for you yet.</p></div>
-{% elif not to_location %}
-<div class="card"><p style="color:var(--muted)">Your branch doesn't have an outlet inventory set up yet — ask an Owner to add one before returning stock.</p></div>
 {% else %}
 
 <div class="card" style="max-width:640px;margin-bottom:1rem">
-  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.75rem">Sending stock back to your branch's outlet — slow movers, end-of-day surplus, damaged goods. It leaves your stock right away, and lands with your manager once they confirm.</p>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:.75rem">Slow movers, end-of-day surplus — send back to your branch's outlet, it lands once your manager confirms. Damaged goods or a batch that shouldn't have gone out — send to Production instead; that one needs your manager's sign-off first.</p>
+
   {% if items %}
-  <form method="post" class="stack" id="returnForm">
+  <div style="display:flex;gap:.6rem;margin-bottom:1rem" class="no-print">
+    <button type="button" class="btn" id="destOutletBtn" onclick="setDestination('outlet')" {% if not to_location %}disabled title="No outlet inventory set up for your branch"{% endif %}>To My Branch</button>
+    <button type="button" class="btn ghost" id="destProductionBtn" onclick="setDestination('production')" {% if not factories %}disabled title="No factory set up on this business"{% endif %}>To Production</button>
+  </div>
+
+  <form method="post" class="stack" id="returnForm" onsubmit="return validateReturn()">
     {% csrf_token %}
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+    <input type="hidden" name="destination" id="destinationField" value="outlet">
+
+    <div id="factoryPicker" hidden>
+      {% if factories|length > 1 %}
+      <label>Which factory</label>
+      <select name="factory">
+        {% for f in factories %}<option value="{{ f.pk }}">{{ f.name }}</option>{% endfor %}
+      </select>
+      {% endif %}
+    </div>
+
     <div id="cartRows">
       <div class="cart-row">
         <select name="product" class="ret-product" required onchange="updateMax(this)">
@@ -34,14 +49,14 @@
     <label style="margin-top:1rem">Reason <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
     <input type="text" name="note" placeholder="Slow mover, damaged, end of day...">
 
-    <button class="btn" style="margin-top:1.2rem;width:100%">Send back to my branch</button>
+    <button class="btn" style="margin-top:1.2rem;width:100%" id="submitBtn">Send back to my branch</button>
   </form>
   {% else %}
   <p style="color:var(--muted)">You have no stock on hand to return right now.</p>
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" style="margin-bottom:1rem">
   <h3>Your returns</h3>
   <div class="table-scroll" style="margin-top:.5rem">
   <table class="list">
@@ -52,7 +67,7 @@
       <td>{{ r.reference_number }}</td>
       <td>{% for line in r.lines.all %}{{ line.product.name }} &times;{{ line.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
       <td>
-        {% if r.status == "SENT" %}<span class="pill warning">Awaiting your manager</span>
+        {% if r.status == "SENT" %}<span class="pill warning">Awaiting confirmation</span>
         {% elif r.status == "RECEIVED" %}<span class="pill active">Received</span>
         {% else %}<span class="pill locked">Disputed</span>{% endif %}
       </td>
@@ -61,11 +76,46 @@
   </table>
   </div>
 </div>
+
+<div class="card">
+  <h3>Sent to Production for approval</h3>
+  <div class="table-scroll" style="margin-top:.5rem">
+  <table class="list">
+    <tr><th>Date</th><th>Items</th><th>Status</th></tr>
+    {% for a in my_production_requests %}
+    <tr>
+      <td>{{ a.created_at|date:"d M Y" }}</td>
+      <td>{% for l in a.payload.lines %}{{ l.product_name }} &times;{{ l.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+      <td>
+        {% if a.status == "PENDING" %}<span class="pill warning">Awaiting your manager</span>
+        {% elif a.status == "APPROVED" %}<span class="pill active">Approved — sent</span>
+        {% else %}<span class="pill locked">Rejected{% if a.reject_reason %} — {{ a.reject_reason }}{% endif %}</span>{% endif %}
+      </td>
+    </tr>
+    {% empty %}<tr><td colspan="3" style="color:var(--muted)">Nothing sent to Production yet.</td></tr>{% endfor %}
+  </table>
+  </div>
+</div>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
+function setDestination(dest) {
+  document.getElementById("destinationField").value = dest;
+  document.getElementById("factoryPicker").hidden = (dest !== "production");
+  document.getElementById("destOutletBtn").className = dest === "outlet" ? "btn" : "btn ghost";
+  document.getElementById("destProductionBtn").className = dest === "production" ? "btn" : "btn ghost";
+  document.getElementById("submitBtn").textContent = dest === "production"
+    ? "Send to Production for approval" : "Send back to my branch";
+}
+function validateReturn() {
+  const dest = document.getElementById("destinationField").value;
+  if (dest === "production") {
+    return confirm("Send this to Production? Your manager needs to approve it before anything actually leaves your stock.");
+  }
+  return true;
+}
 function updateMax(sel) {
   const row = sel.closest(".cart-row");
   const qtyInput = row.querySelector("input[name=quantity]");
@@ -85,5 +135,8 @@ function removeCartRow(btn) {
   const rows = document.getElementById("cartRows");
   if (rows.children.length > 1) btn.closest(".cart-row").remove();
 }
+document.addEventListener("DOMContentLoaded", function () {
+  {% if not to_location and factories %}setDestination("production");{% endif %}
+});
 </script>
 {% endblock %}

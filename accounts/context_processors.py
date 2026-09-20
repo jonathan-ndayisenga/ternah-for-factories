@@ -17,7 +17,8 @@ def notifications(request):
     the others feed specific tiles/nav links so a badge always points at
     exactly where the thing needing attention lives."""
     empty = {"pending_stock_requests": 0, "pending_deliveries": 0, "pending_inventory": 0,
-             "pending_approvals": 0, "pending_branch": 0, "pending_notifications": 0}
+             "pending_approvals": 0, "pending_branch": 0, "pending_notifications": 0,
+             "pending_incoming_returns": 0}
     user = getattr(request, "user", None)
     if not (user and user.is_authenticated) or user.is_superuser:
         return empty
@@ -60,6 +61,15 @@ def notifications(request):
             business=user.business, status="PENDING", requested_by__branch=branch).count()
     pending_branch = pending_inventory + pending_approvals
 
+    # Production's own factory: returns sent straight to them (a manager-
+    # approved RETURN_TO_PRODUCTION), sitting at "Sent" until Production
+    # itself confirms receipt
+    pending_incoming_returns = 0
+    if user.role == "PRODUCTION":
+        from sales.models import StockReturn
+        pending_incoming_returns = StockReturn.objects.filter(
+            business=user.business, status__in=["SENT", "DISPUTED"], to_location__branch=user.branch).count()
+
     # the total behind the Notifications nav badge — everything the full
     # feed would show as still "in flight" for this account
     if user.role == "OWNER":
@@ -81,10 +91,11 @@ def notifications(request):
         outlet = InventoryLocation.objects.filter(branch=user.branch, type="OUTLET").first()
         pending_notifications = OutletTransfer.objects.filter(status="SENT", to_location=outlet).count() if outlet else 0
     elif user.role == "PRODUCTION":
-        pending_notifications = pending_stock_requests
+        pending_notifications = pending_stock_requests + pending_incoming_returns
     else:
         pending_notifications = 0
 
     return {"pending_stock_requests": pending_stock_requests, "pending_deliveries": pending_deliveries,
             "pending_inventory": pending_inventory, "pending_approvals": pending_approvals,
-            "pending_branch": pending_branch, "pending_notifications": pending_notifications}
+            "pending_branch": pending_branch, "pending_notifications": pending_notifications,
+            "pending_incoming_returns": pending_incoming_returns}

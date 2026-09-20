@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from accounts.models import PRICE_TIERS
+from core.models import Branch
 from finance.services import post_debtor_payment, post_expense, post_outlet_transfer_expense, post_sale, reverse_debtor_payment
 from production.models import Distribution, DistributionLine, Product
 from .models import (
@@ -563,20 +564,63 @@ def stock_request_cancel(request, pk):
 
 @login_required
 def stock_return_create(request):
-    """A rep sending stock back to their own branch's outlet — slow movers,
-    end-of-day surplus, damaged goods. Deliberately keyed off the user's own
-    personal inventory (not _pos_location, which falls back to the branch
-    outlet for a manager previewing this view) — a return only makes sense
-    from a real rep location, never outlet-to-itself."""
+    """A rep sending stock back — either straight to their own branch's
+    outlet (slow movers, end-of-day surplus: lands once the manager
+    confirms, same as always) or to Production itself (damaged goods, a
+    batch that shouldn't have gone out — bigger deal, so it needs the
+    manager's sign-off first, via the same Approvals inbox a sale reversal
+    goes through, before anything actually leaves the rep's stock).
+    Deliberately keyed off the user's own personal inventory (not
+    _pos_location, which falls back to the branch outlet for a manager
+    previewing this view) — a return only makes sense from a real rep
+    location, never outlet-to-itself."""
     if _acting_role(request) != "SALES_REP":
         return redirect("home")
     biz = request.user.business
     location = getattr(request.user, "inventory", None)
     to_location = InventoryLocation.objects.filter(business=biz, branch=location.branch, type="OUTLET").first() \
         if location else None
+    factories = Branch.objects.filter(business=biz, kind="FACTORY", is_active=True).order_by("name")
 
     items = list(StockItem.objects.filter(location=location, quantity__gt=0).select_related("product").order_by("product__name")) \
         if location else []
+
+    if request.method == "POST" and location and request.POST.get("destination") == "production":
+        idempotency_key = request.POST.get("idempotency_key", "").strip()
+        if idempotency_key and PendingAction.objects.filter(
+                business=biz, action_type="RETURN_TO_PRODUCTION", requested_by=request.user,
+                payload__idempotency_key=idempotency_key).exists():
+            messages.success(request, "That request was already sent to your manager.")
+            return redirect("sales:stock_return_create")
+        factory = factories.filter(pk=request.POST.get("factory")).first() or factories.first()
+        if not factory:
+            messages.error(request, "There's no factory set up on this business yet.")
+            return redirect("sales:stock_return_create")
+        lines = []
+        for pid, qty in zip(request.POST.getlist("product"), request.POST.getlist("quantity")):
+            try:
+                qty = int(qty)
+            except (TypeError, ValueError):
+                continue
+            if not pid or qty <= 0:
+                continue
+            item = StockItem.objects.filter(location=location, product_id=pid).first()
+            if not item:
+                continue
+            qty = min(qty, item.quantity)
+            if qty <= 0:
+                continue
+            lines.append({"product_id": item.product_id, "product_name": item.product.name, "quantity": qty})
+        if lines:
+            PendingAction.objects.create(
+                business=biz, action_type="RETURN_TO_PRODUCTION", requested_by=request.user,
+                payload={"from_location_id": location.id, "factory_branch_id": factory.id, "lines": lines,
+                        "note": request.POST.get("note", "").strip(), "idempotency_key": idempotency_key},
+            )
+            messages.success(request, f"Sent to your manager for approval — it'll go to {factory.name} once they sign off.")
+        else:
+            messages.error(request, "Add at least one product with a quantity to return.")
+        return redirect("sales:stock_return_create")
 
     if request.method == "POST" and location and not to_location:
         messages.error(request, "Your branch doesn't have an outlet inventory set up yet — ask an Owner to add one before returning stock.")
@@ -625,25 +669,33 @@ def stock_return_create(request):
 
     my_returns = StockReturn.objects.filter(from_location=location).prefetch_related("lines__product").order_by("-date", "-id")[:20] \
         if location else []
+    my_production_requests = PendingAction.objects.filter(
+        business=biz, action_type="RETURN_TO_PRODUCTION", requested_by=request.user
+    ).order_by("-created_at")[:20] if location else []
     return render(request, "sales/stock_return_create.html", {
         "location": location, "to_location": to_location, "items": items, "my_returns": my_returns,
+        "my_production_requests": my_production_requests, "factories": factories,
         "idempotency_key": uuid.uuid4().hex,
     })
 
 
 @login_required
-@user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER"))
+@user_passes_test(lambda u: u.is_authenticated and u.role in ("OWNER", "MANAGER", "PRODUCTION"))
 def stock_return_confirm(request, pk):
-    """Manager/Owner's side of the loop — same landing logic, and the same
-    disputed-can-still-be-resolved rule, as production.distribution_confirm
-    and outlet_transfer_confirm."""
+    """The receiving side's confirm — a Manager for a return landing at
+    their branch's outlet, Production for one landing at their factory
+    store (a RETURN_TO_PRODUCTION request, already signed off in
+    Approvals — this is Production actually taking receipt of it). Same
+    landing logic, and the same disputed-can-still-be-resolved rule, as
+    production.distribution_confirm and outlet_transfer_confirm."""
     next_url = request.POST.get("next", "")
+    default_next = "production:distributions" if request.user.role == "PRODUCTION" else "manager:inventory"
     if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
-        next_url = "manager:inventory"
+        next_url = default_next
 
     biz = request.user.business
     ret = get_object_or_404(StockReturn, pk=pk, business=biz, status__in=["SENT", "DISPUTED"])
-    if request.user.role == "MANAGER" and ret.to_location.branch_id != request.user.branch_id:
+    if request.user.role in ("MANAGER", "PRODUCTION") and ret.to_location.branch_id != request.user.branch_id:
         return redirect(next_url)
 
     action = request.POST.get("action")

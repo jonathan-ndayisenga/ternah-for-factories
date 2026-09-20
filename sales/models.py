@@ -273,10 +273,10 @@ class StockReturnLine(models.Model):
 class PendingAction(TimeStamped):
     """One request/approval engine for the whole system."""
     TYPES = [("SWAP", "Swap"), ("REFUND", "Refund"), ("STOCK_REQUEST", "Stock request"),
-             ("SALE_REVERSAL", "Sale reversal")]
+             ("SALE_REVERSAL", "Sale reversal"), ("RETURN_TO_PRODUCTION", "Return to Production")]
     STATUS = [("PENDING", "Pending"), ("APPROVED", "Approved"), ("REJECTED", "Rejected")]
     business = models.ForeignKey("platformadmin.Business", on_delete=models.CASCADE)
-    action_type = models.CharField(max_length=15, choices=TYPES)
+    action_type = models.CharField(max_length=21, choices=TYPES)
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="requests")
     payload = models.JSONField(default=dict)
     status = models.CharField(max_length=10, choices=STATUS, default="PENDING")

@@ -24,7 +24,9 @@
 <div class="tile-grid">
   {% for t in tiles %}
   <a class="tile" href="{{ t.href }}">
-    {% if t.key == "production" and pending_stock_requests %}<span class="tile-badge">{{ pending_stock_requests }}</span>{% endif %}
+    {% with production_total=pending_stock_requests|add:pending_incoming_returns %}
+    {% if t.key == "production" and production_total %}<span class="tile-badge">{{ production_total }}</span>{% endif %}
+    {% endwith %}
     {% if t.key == "sales_rep" and pending_deliveries %}<span class="tile-badge">{{ pending_deliveries }}</span>{% endif %}
     {% if t.key == "branch" and pending_branch %}<span class="tile-badge">{{ pending_branch }}</span>{% endif %}
     <div class="tile-icon">

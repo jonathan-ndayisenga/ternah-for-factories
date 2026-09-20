@@ -210,20 +210,27 @@ def notifications(request):
             t.from_location.branch.name, t.to_location.branch.name,
             items_line(t.lines.all()), t.status, t.get_status_display(), dest[0], dest[1])
 
-    # ---- Stock Return: a rep sending stock back to their branch's outlet ----
+    # ---- Stock Return: a rep sending stock back to their branch's outlet,
+    # or (once a manager's approved it) straight to Production ----
     ret_qs = StockReturn.objects.filter(business=biz).select_related(
         "from_location__branch", "from_location__rep", "to_location__branch")
     if not is_owner:
         if user.role == "SALES_REP":
             loc = getattr(user, "inventory", None)
             ret_qs = ret_qs.filter(from_location=loc) if loc else ret_qs.none()
-        elif user.role == "MANAGER":
+        elif user.role in ("MANAGER", "PRODUCTION"):
             ret_qs = ret_qs.filter(to_location__branch=user.branch)
         else:
             ret_qs = ret_qs.none()
     for r in ret_qs.prefetch_related("lines__product").order_by("-date", "-id")[:60]:
-        dest = ("Return Stock", reverse("sales:stock_return_create")) if user.role == "SALES_REP" else (
-            ("Inventory", reverse("manager:inventory")) if user.role == "MANAGER" else (None, None))
+        if user.role == "SALES_REP":
+            dest = ("Return Stock", reverse("sales:stock_return_create"))
+        elif user.role == "PRODUCTION":
+            dest = ("Distributions", reverse("production:distributions"))
+        elif user.role == "MANAGER":
+            dest = ("Inventory", reverse("manager:inventory"))
+        else:
+            dest = (None, None)
         add(r.date, "stock_return", "Stock Return", r.pk, r.reference_number,
             r.from_location.rep.username if r.from_location.rep_id else r.from_location.branch.name,
             r.to_location.branch.name, items_line(r.lines.all()), r.status, r.get_status_display(), dest[0], dest[1])

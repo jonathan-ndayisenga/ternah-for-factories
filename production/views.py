@@ -20,7 +20,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from core.models import Branch
 from finance.models import Supplier, SupplierPayable
 from finance.services import post_batch_completion, post_batch_loss, post_raw_material_purchase, reverse_raw_material_purchase
-from sales.models import InventoryLocation, StockItem, StockMovement, StockRequest
+from sales.models import InventoryLocation, StockItem, StockMovement, StockRequest, StockReturn
 from .models import (
     Category, Dispensation, Distribution, DistributionLine, FormulaLine, Product, ProductFormula,
     ProductionBatch, QAReport, RawMaterial, RawMaterialPurchase, UOM_SUGGESTIONS,
@@ -437,7 +437,12 @@ def distribution_list(request):
     distributions = Distribution.objects.filter(business=biz) \
         .select_related("sender_branch", "receiver_location__branch", "receiver_location__rep", "created_by", "confirmed_by") \
         .prefetch_related("lines__product").order_by("-date", "-id")
-    return render(request, "production/distributions.html", {"distributions": distributions})
+    incoming_returns = StockReturn.objects.filter(business=biz, status__in=["SENT", "DISPUTED"], to_location__type="PRODUCTION_STORE") \
+        .select_related("from_location__branch", "from_location__rep", "to_location__branch") \
+        .prefetch_related("lines__product").order_by("date")
+    return render(request, "production/distributions.html", {
+        "distributions": distributions, "incoming_returns": incoming_returns,
+    })
 
 
 @distribution_staff_required
