@@ -1133,23 +1133,36 @@ def dashboard(request):
     expiring = RawMaterialPurchase.objects.filter(
         raw_material__business=biz, branch=factory, remaining_quantity__gt=0,
         expiry_date__isnull=False, expiry_date__lte=today + timedelta(days=60),
-    ).select_related("raw_material").order_by("expiry_date")[:10]
+    ).select_related("raw_material").order_by("expiry_date")
 
     factory_store = InventoryLocation.objects.filter(business=biz, branch=factory, type="PRODUCTION_STORE").first() \
         if factory else None
-    store_items = StockItem.objects.filter(location=factory_store).select_related("product") \
+    store_items = StockItem.objects.filter(location=factory_store).select_related("product").order_by("product__name") \
         if factory_store else StockItem.objects.none()
     finished_expiring = ProductionBatch.objects.filter(
         business=biz, branch=factory, status="COMPLETED", expiry_date__isnull=False, expiry_date__lte=today + timedelta(days=60),
-    ).select_related("product").order_by("expiry_date")[:10]
+    ).select_related("product").order_by("expiry_date")
+    recent_batches = ProductionBatch.objects.filter(business=biz, branch=factory).select_related("product").order_by("-date", "-id")
+
+    def page(qs, param):
+        page_obj = Paginator(qs, 5).get_page(request.GET.get(param))
+        qd = request.GET.copy()
+        qd.pop(param, None)
+        return page_obj, qd.urlencode()
+
+    low_page, low_qs = page(low_stock, "low_page")
+    exp_page, exp_qs = page(expiring, "exp_page")
+    store_page, store_qs = page(store_items, "store_page")
+    fexp_page, fexp_qs = page(finished_expiring, "fexp_page")
+    batch_page, batch_qs = page(recent_batches, "batch_page")
 
     return render(request, "production/dashboard.html", {
         "factory": factory, "factories": _factories(biz),
-        "low_stock": low_stock,
-        "expiring": expiring,
-        "finished_expiring": finished_expiring,
-        "store_items": store_items,
-        "recent_batches": ProductionBatch.objects.filter(business=biz, branch=factory).order_by("-date", "-id")[:8],
+        "low_page": low_page, "low_qs": low_qs,
+        "exp_page": exp_page, "exp_qs": exp_qs,
+        "store_page": store_page, "store_qs": store_qs,
+        "fexp_page": fexp_page, "fexp_qs": fexp_qs,
+        "batch_page": batch_page, "batch_qs": batch_qs,
         "processing_count": ProductionBatch.objects.filter(business=biz, branch=factory, status="DISPENSED").count(),
         "awaiting_confirmation": Distribution.objects.filter(business=biz, sender_branch=factory, status="SENT").count(),
         "stock_requests_count": StockRequest.objects.filter(business=biz, status__in=("SUBMITTED", "PARTIAL")).count(),
