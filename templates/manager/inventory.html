@@ -5,7 +5,7 @@
   <h2>Inventory — {{ request.user.branch.name }}</h2>
   <span class="spacer"></span>
   {% if items %}<span class="pill active">Stock value: UGX {{ stock_value|floatformat:0 }}</span>{% endif %}
-  <a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'manager:return_to_production' %}">Return to Production</a>
+  <a class="btn" href="{% url 'manager:return_to_production' %}">Return to Production</a>
 </div>
 
 {% if incoming %}
