@@ -34,17 +34,17 @@ class User(AbstractUser):
 
     def switchable_views(self):
         """Which views a manager may switch into. Manager/Cashier are the
-        base capability, always available; Production/Sales Rep are extra
-        privileges gated on the matching module actually being assigned —
-        not automatic just because the manager role can switch at all."""
+        base capability, always available; Production is an extra privilege
+        gated on the matching module actually being assigned. No personal
+        Sales Rep view for a manager — the Cashier view already covers
+        selling out of the outlet's own stock, and a manager has no
+        personal rep inventory of their own to sell out of anyway."""
         if self.role != "MANAGER":
             return []
         views = ["MANAGER", "CASHIER"]
         codes = set(self.modules.values_list("code", flat=True))
         if "PRODUCTION" in codes:
             views.append("PRODUCTION")
-        if "SALES" in codes:
-            views.append("SALES_REP")
         return views
 
 
