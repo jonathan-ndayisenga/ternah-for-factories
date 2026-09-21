@@ -330,7 +330,10 @@ def distribution_create(request):
     validated against the same figures shown live in the form."""
     biz = request.user.business
     factory = _current_factory(request)
-    locations = InventoryLocation.objects.filter(business=biz).exclude(type="PRODUCTION_STORE") \
+    # a deactivated branch, or a deactivated rep's own personal inventory,
+    # is never a valid destination — nobody's there to receive or confirm it
+    locations = InventoryLocation.objects.filter(business=biz, branch__is_active=True) \
+        .exclude(type="PRODUCTION_STORE").exclude(type="REP", rep__is_active=False) \
         .select_related("branch", "rep")
     active_products = Product.objects.filter(business=biz, status="ACTIVE").order_by("name")
     factory_store = InventoryLocation.objects.filter(business=biz, branch=factory, type="PRODUCTION_STORE").first() \
@@ -361,7 +364,12 @@ def distribution_create(request):
 
     error = None
     if request.method == "POST":
-        receiver = get_object_or_404(InventoryLocation, pk=request.POST.get("location"), business=biz)
+        receiver = get_object_or_404(
+            InventoryLocation, pk=request.POST.get("location"), business=biz, branch__is_active=True,
+        )
+        if receiver.type == "REP" and receiver.rep and not receiver.rep.is_active:
+            messages.error(request, f"{receiver} has been deactivated — pick another destination.")
+            return redirect("production:distribution_create")
         lines = []
         requested = {}   # product_id -> total qty requested across rows, so duplicate rows are caught too
         for pid, qty in zip(request.POST.getlist("product"), request.POST.getlist("quantity")):
