@@ -695,7 +695,20 @@ def stock_return_confirm(request, pk):
 
     biz = request.user.business
     ret = get_object_or_404(StockReturn, pk=pk, business=biz, status__in=["SENT", "DISPUTED"])
-    if request.user.role in ("MANAGER", "PRODUCTION") and ret.to_location.branch_id != request.user.branch_id:
+
+    # a factory-bound return can be confirmed by anyone with production
+    # access — a manager acting as Production has no branch of their own
+    # that's a factory (their own .branch is their outlet), so this can't
+    # be a straight branch-equality check the way an outlet return's can
+    if ret.to_location.type == "PRODUCTION_STORE":
+        authorized = (
+            request.user.role == "OWNER"
+            or (request.user.role == "PRODUCTION" and ret.to_location.branch_id == request.user.branch_id)
+            or (request.user.role == "MANAGER" and request.user.modules.filter(code="PRODUCTION").exists())
+        )
+        if not authorized:
+            return redirect(next_url)
+    elif request.user.role in ("MANAGER", "PRODUCTION") and ret.to_location.branch_id != request.user.branch_id:
         return redirect(next_url)
 
     action = request.POST.get("action")
