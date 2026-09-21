@@ -408,7 +408,8 @@ def rep_detail(request, pk):
         returned_qs = returned_qs.filter(date__lte=date_to)
     returned_total = StockReturnLine.objects.filter(stock_return__in=returned_qs).aggregate(s=Sum("quantity"))["s"] or 0
 
-    sales_qs = Sale.objects.filter(business=biz, location=location, is_reversed=False).select_related("served_by").order_by("-created_at")
+    sales_qs = Sale.objects.filter(business=biz, location=location, is_reversed=False) \
+        .select_related("served_by").prefetch_related("items__product").order_by("-created_at")
     if date_from:
         sales_qs = sales_qs.filter(created_at__date__gte=date_from)
     if date_to:

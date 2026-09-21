@@ -139,17 +139,18 @@
   <h3 class="print-only">Sales Made</h3>
   <div class="table-scroll">
   <table class="list">
-    <tr><th>Date</th><th>Receipt</th><th>Customer</th><th>Payment</th><th>Total</th><th></th></tr>
+    <tr><th>Date</th><th>Receipt</th><th>Items</th><th>Customer</th><th>Payment</th><th>Total</th><th></th></tr>
     {% for s in sales_page %}
     <tr{% if s.is_reversed %} style="opacity:.5"{% endif %}>
       <td>{{ s.created_at|date:"d M Y, H:i" }}</td>
       <td>{{ s.receipt_number }}</td>
+      <td>{% for item in s.items.all %}{{ item.product.name }} &times;{{ item.quantity }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
       <td>{{ s.customer_name|default:"Walk-in" }}</td>
       <td>{{ s.get_payment_method_display }}</td>
       <td>UGX {{ s.total|floatformat:0 }}</td>
       <td class="no-print"><a class="btn ghost" style="padding:.35rem .7rem;min-height:auto" href="{% url 'sales:receipt' s.pk %}">Receipt</a></td>
     </tr>
-    {% empty %}<tr><td colspan="6" style="color:var(--muted)">No sales in range.</td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="7" style="color:var(--muted)">No sales in range.</td></tr>{% endfor %}
   </table>
   </div>
   {% include "partials/pagination.html" with page_obj=sales_page extra_qs=sales_qs_str page_param="sold_page" %}
