@@ -10,12 +10,17 @@
 {% include "partials/print_letterhead.html" with print_title=print_title date_from=date_from date_to=date_to %}
 
 <form method="get" class="no-print" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
+  <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">Item</label>
+    <select name="product" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px">
+      <option value="">All items</option>
+      {% for p in products %}<option value="{{ p.pk }}" {% if product_id == p.pk|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+    </select></div>
   <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">From</label>
     <input name="from" type="date" value="{{ date_from }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
   <div><label style="display:block;font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:.25rem">To</label>
     <input name="to" type="date" value="{{ date_to }}" style="padding:.5rem .6rem;border:1px solid #D7DEE6;border-radius:8px"></div>
   <button class="btn">Filter</button>
-  {% if date_from or date_to %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:rep_detail' location.pk %}">Clear</a>{% endif %}
+  {% if date_from or date_to or product_id %}<a class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" href="{% url 'reports:rep_detail' location.pk %}">Clear</a>{% endif %}
 </form>
 
 <p class="print-only" style="color:var(--muted);font-size:.85rem;margin-bottom:.75rem">Every section below, in full — the on-screen view shows one at a time, the printed page shows all of them.</p>

@@ -382,13 +382,20 @@ def rep_detail(request, pk):
         raise Http404
     date_from = request.GET.get("from", "")
     date_to = request.GET.get("to", "")
+    product_id = request.GET.get("product", "")
+    products = Product.objects.filter(business=biz).order_by("name")
 
     requests_qs = StockRequest.objects.filter(business=biz, requester_location=location).order_by("-created_at")
     if date_from:
         requests_qs = requests_qs.filter(created_at__date__gte=date_from)
     if date_to:
         requests_qs = requests_qs.filter(created_at__date__lte=date_to)
-    requested_total = sum(int(l.get("quantity", 0) or 0) for r in requests_qs for l in r.lines)
+    if product_id:
+        requests_qs = [r for r in requests_qs if any(str(l.get("product_id")) == product_id for l in r.lines)]
+    requested_total = sum(
+        int(l.get("quantity", 0) or 0) for r in requests_qs for l in r.lines
+        if not product_id or str(l.get("product_id")) == product_id
+    )
     for r in requests_qs:
         r.lines_display = [{**l, "product": Product.objects.filter(pk=l["product_id"]).first()} for l in r.lines]
 
@@ -398,7 +405,12 @@ def rep_detail(request, pk):
         received_qs = received_qs.filter(date__gte=date_from)
     if date_to:
         received_qs = received_qs.filter(date__lte=date_to)
-    received_total = DistributionLine.objects.filter(distribution__in=received_qs).aggregate(s=Sum("quantity"))["s"] or 0
+    if product_id:
+        received_qs = received_qs.filter(lines__product_id=product_id).distinct()
+    received_lines = DistributionLine.objects.filter(distribution__in=received_qs)
+    if product_id:
+        received_lines = received_lines.filter(product_id=product_id)
+    received_total = received_lines.aggregate(s=Sum("quantity"))["s"] or 0
 
     returned_qs = StockReturn.objects.filter(business=biz, from_location=location) \
         .select_related("to_location__branch").prefetch_related("lines__product").order_by("-date", "-id")
@@ -406,7 +418,12 @@ def rep_detail(request, pk):
         returned_qs = returned_qs.filter(date__gte=date_from)
     if date_to:
         returned_qs = returned_qs.filter(date__lte=date_to)
-    returned_total = StockReturnLine.objects.filter(stock_return__in=returned_qs).aggregate(s=Sum("quantity"))["s"] or 0
+    if product_id:
+        returned_qs = returned_qs.filter(lines__product_id=product_id).distinct()
+    returned_lines = StockReturnLine.objects.filter(stock_return__in=returned_qs)
+    if product_id:
+        returned_lines = returned_lines.filter(product_id=product_id)
+    returned_total = returned_lines.aggregate(s=Sum("quantity"))["s"] or 0
 
     sales_qs = Sale.objects.filter(business=biz, location=location, is_reversed=False) \
         .select_related("served_by").prefetch_related("items__product").order_by("-created_at")
@@ -414,10 +431,20 @@ def rep_detail(request, pk):
         sales_qs = sales_qs.filter(created_at__date__gte=date_from)
     if date_to:
         sales_qs = sales_qs.filter(created_at__date__lte=date_to)
-    sales_agg = sales_qs.aggregate(total=Sum("total"), count=Count("id"))
-    sold_total, sold_count = sales_agg["total"] or Decimal("0"), sales_agg["count"] or 0
+    if product_id:
+        # only that product's own line value/count — a sale with other
+        # products mixed in shouldn't inflate "how much of THIS sold"
+        sales_qs = sales_qs.filter(items__product_id=product_id).distinct()
+        item_agg = SaleItem.objects.filter(sale__in=sales_qs, product_id=product_id) \
+            .aggregate(total=Sum("line_total"), count=Count("sale_id", distinct=True))
+        sold_total, sold_count = item_agg["total"] or Decimal("0"), item_agg["count"] or 0
+    else:
+        sales_agg = sales_qs.aggregate(total=Sum("total"), count=Count("id"))
+        sold_total, sold_count = sales_agg["total"] or Decimal("0"), sales_agg["count"] or 0
 
     stock_items = list(StockItem.objects.filter(location=location).select_related("product").order_by("product__name"))
+    if product_id:
+        stock_items = [i for i in stock_items if str(i.product_id) == product_id]
     for i in stock_items:
         i.value = i.quantity * i.buying_price
 
@@ -434,8 +461,9 @@ def rep_detail(request, pk):
 
     return render(request, "reports/rep_detail.html", {
         "location": location, "date_from": date_from, "date_to": date_to,
+        "products": products, "product_id": product_id,
         "requests_page": requests_page, "requests_qs_str": requests_qs_str,
-        "requested_total": requested_total, "requested_count": requests_qs.count(),
+        "requested_total": requested_total, "requested_count": len(requests_qs),
         "received_page": received_page, "received_qs_str": received_qs_str,
         "received_total": received_total, "received_count": received_qs.count(),
         "returned_page": returned_page, "returned_qs_str": returned_qs_str,
