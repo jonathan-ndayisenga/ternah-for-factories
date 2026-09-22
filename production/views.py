@@ -766,6 +766,13 @@ def formula_edit(request, product_pk):
                 formula = ProductFormula.objects.create(
                     product=product, version=(latest.version + 1) if latest else 1, status="DRAFT")
             formula.lines.all().delete()
+            # the same raw material picked twice (a copy-paste row mistake)
+            # merges into one line rather than becoming two — batch_create's
+            # stock check evaluates each formula line independently, so two
+            # lines for the same material would each pass the check on their
+            # own even when their combined need exceeds what's on hand,
+            # silently under-dispensing the batch
+            merged = {}
             for mid, qty in zip(request.POST.getlist("raw_material"), request.POST.getlist("quantity_per_unit")):
                 try:
                     qty = Decimal(qty)
@@ -773,6 +780,8 @@ def formula_edit(request, product_pk):
                     continue
                 if not mid or qty <= 0:
                     continue
+                merged[mid] = merged.get(mid, Decimal("0")) + qty
+            for mid, qty in merged.items():
                 material = materials.filter(pk=mid).first()
                 if material:
                     FormulaLine.objects.create(formula=formula, raw_material=material, quantity_per_unit=qty)

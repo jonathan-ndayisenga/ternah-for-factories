@@ -196,12 +196,13 @@ def record_sale(request):
 
     allowed = _allowed_tiers(request)
     lines, subtotal = [], Decimal("0")
+    short_bits = []   # requested more of something than was actually on the shelf by submit time
     for pid, qty, tier, custom_price_raw in zip(
         request.POST.getlist("product"), request.POST.getlist("quantity"),
         request.POST.getlist("tier"), request.POST.getlist("custom_price"),
     ):
         try:
-            qty = int(qty)
+            requested_qty = qty = int(qty)
         except (TypeError, ValueError):
             continue
         if not pid or qty <= 0 or tier not in allowed:
@@ -225,7 +226,13 @@ def record_sale(request):
             if unit_price is None:
                 continue   # not priced for this tier — nothing to sell it at
 
+        # the cart's own JS already caps this — this only fires on stale
+        # page state (stock moved since load) or a direct POST, but either
+        # way the cashier needs to be told, not just silently sold less
         qty = min(qty, item.quantity)
+        if requested_qty > qty:
+            short_bits.append(f"{item.product.name}: asked for {requested_qty}, only {qty} available"
+                              if qty > 0 else f"{item.product.name}: none available, dropped from the sale")
         if qty <= 0:
             continue
         line_total = (unit_price * qty).quantize(Decimal("0.01"))
@@ -287,6 +294,9 @@ def record_sale(request):
     if transfer:
         messages.success(request, f"Sent to {to_location.branch.name} — reference {transfer.reference_number}. "
                                   f"It'll land in their inventory once they confirm receipt.")
+    if short_bits:
+        messages.warning(request, "Stock moved since the page loaded, so this sale went through for less than "
+                                  f"asked: {'; '.join(short_bits)}.")
     return redirect(f"{reverse('sales:receipt', args=[sale.pk])}?auto_print=1")
 
 
