@@ -4,13 +4,13 @@ key, span (1|2), title, href, icon (raw svg paths), warn (bool),
 stats [{number, unit_label, warn, warn_label}] or empty_text,
 actions [{label, href}], poll_url.
 {% endcomment %}
-<div class="tui-tile tui-span-{{ tile.span }}">
+<div class="tui-tile tui-span-{{ tile.span }}" onclick="window.location='{{ tile.href }}'" style="cursor:pointer">
   <div id="tile-body-{{ tile.key }}" hx-get="{{ tile.poll_url }}"
        hx-trigger="load, every 30s [document.visibilityState === 'visible']" hx-swap="innerHTML">
     {% include "ternah_ui/tile_body.html" %}
   </div>
 
   <div class="tui-tile-actions">
-    {% for a in tile.actions %}<a class="tui-pill" href="{{ a.href }}">{{ a.label }}</a>{% endfor %}
+    {% for a in tile.actions %}<a class="tui-pill" href="{{ a.href }}" onclick="event.stopPropagation()">{{ a.label }}</a>{% endfor %}
   </div>
 </div>

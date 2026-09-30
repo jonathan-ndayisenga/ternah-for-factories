@@ -9,7 +9,7 @@ and by the /home/tiles/<tile>/ HTMX fragment — same markup either way.
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
          stroke-linecap="round" stroke-linejoin="round">{{ tile.icon|safe }}</svg>
   </span>
-  <a class="tui-tile-title" href="{{ tile.href }}">{{ tile.title }}</a>
+  <a class="tui-tile-title" href="{{ tile.href }}" onclick="event.stopPropagation()">{{ tile.title }}</a>
 </div>
 {% if tile.empty_text %}
 <div class="tui-tile-empty">{{ tile.empty_text }}</div>
