@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Search{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'ternah-ui/shell.css' %}">{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <form method="get" class="tui-search" style="max-width:480px">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search products, batches, customers or receipts"
+           aria-label="Search" autofocus>
+    <button type="submit" class="tui-search-submit" aria-label="Search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    </button>
+  </form>
+</div>
+
+<h1 class="tui-greeting" style="font-size:24px">
+  {% if q %}Results for "{{ q }}"{% else %}Search{% endif %}
+</h1>
+<p class="tui-greeting-sub">
+  {% if not q %}Type something above and press Enter.
+  {% elif groups %}Grouped by what it is — click a result to go straight there.
+  {% else %}Nothing found for "{{ q }}".{% endif %}
+</p>
+
+{% for group in groups %}
+<div class="card" style="margin-bottom:1rem">
+  <h3>{{ group.label }} <span style="color:var(--muted);font-weight:500">({{ group.rows|length }})</span></h3>
+  <div class="table-scroll">
+    <table class="list">
+      {% for row in group.rows %}
+      <tr><td><a href="{{ row.href }}">{{ row.text }}</a></td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

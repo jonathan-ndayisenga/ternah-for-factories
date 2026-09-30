@@ -4,14 +4,16 @@
 {% block extra_head %}<link rel="stylesheet" href="{% static 'ternah-ui/shell.css' %}">{% endblock %}
 {% block content %}
 <div class="page-head no-print">
-  <div class="tui-search" style="max-width:420px">
-    <input type="search" id="tui-search-input" placeholder="Search products, batches, customers or receipts"
+  <form class="tui-search" style="max-width:420px" method="get" action="{% url 'home_search_page' %}">
+    <input type="search" name="q" id="tui-search-input" placeholder="Search products, batches, customers or receipts"
            aria-label="Search"
            hx-get="{% url 'home_search' %}" hx-trigger="keyup changed delay:300ms, focus"
            hx-target="#tui-search-results" hx-swap="innerHTML">
-    <kbd>/</kbd>
+    <button type="submit" class="tui-search-submit" aria-label="Search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    </button>
     <div id="tui-search-results" class="tui-search-results" role="listbox" aria-label="Search results"></div>
-  </div>
+  </form>
   <span class="spacer"></span>
   <span style="color:var(--muted);font-size:.9rem">{% now "l, j F" %}</span>
 </div>

@@ -50,6 +50,7 @@ urlpatterns = [
     path("", home, name="home"),
     path("home/tiles/<str:tile>/", manager_views.home_tile, name="home_tile"),
     path("home/search/", manager_views.home_search, name="home_search"),
+    path("home/search-results/", manager_views.home_search_page, name="home_search_page"),
     path("admin/", admin.site.urls),
     path("accounts/", include("accounts.urls")),
     path("platform/", include("platformadmin.urls")),

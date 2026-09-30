@@ -159,43 +159,32 @@ def home_tile(request, tile):
     return render(request, "ternah_ui/tile_body.html", {"tile": merged})
 
 
-@login_required
-@manager_required
-def home_search(request):
-    """GET /home/search/?q=... — products, batches, customers (debtors) and
-    receipts, this tenant only. Small, capped result sets per group; empty
-    query returns nothing rather than a full listing."""
-    from django.db.models import Q
-    from django.http import HttpResponse
+def _search_groups(request, q, limit):
+    """Shared by the live dropdown (small limit) and the full results page
+    (large limit) — one place that decides what's searched and how it's
+    scoped, so the two views can never quietly drift apart. Products stay
+    business-wide (shared catalog); everything else is scoped to this
+    manager's own branch — a search box is still an access boundary, not
+    just a filter."""
+    from django.db.models import Q as DQ
     from django.urls import reverse
-    q = request.GET.get("q", "").strip()
-    if not q:
-        # Truly empty — not even whitespace — so .tui-search-results:empty
-        # in CSS actually hides the box. A template render here always
-        # leaves stray newlines behind, which defeats that selector and
-        # shows a blank floating panel the moment the field gets focus.
-        return HttpResponse("")
-
     biz, branch = request.user.business, request.user.branch
     groups = []
 
-    # Catalog — shared business-wide, not branch-specific.
-    products = Product.objects.filter(business=biz, name__icontains=q)[:6]
+    products = Product.objects.filter(business=biz, name__icontains=q)[:limit]
     if products:
         groups.append({"label": "Products", "rows": [
             {"text": p.name, "href": reverse("production:formula_edit", args=[p.pk])} for p in products]})
 
-    # Everything below is scoped to this manager's own branch — a search
-    # box is still an access boundary, not just a filter.
     from production.models import ProductionBatch
-    batches = ProductionBatch.objects.filter(business=biz, branch=branch, batch_number__icontains=q)[:6]
+    batches = ProductionBatch.objects.filter(business=biz, branch=branch, batch_number__icontains=q)[:limit]
     if batches:
         groups.append({"label": "Batches", "rows": [
             {"text": b.batch_number, "href": reverse("reports:production_batch_detail", args=[b.pk])} for b in batches]})
 
     customers = Debtor.objects.filter(
         business=biz, location__branch=branch
-    ).filter(Q(name__icontains=q) | Q(phone__icontains=q))[:6]
+    ).filter(DQ(name__icontains=q) | DQ(phone__icontains=q))[:limit]
     if customers:
         groups.append({"label": "Customers", "rows": [
             {"text": f"{d.name}{' — ' + d.phone if d.phone else ''}",
@@ -203,7 +192,7 @@ def home_search(request):
 
     receipts = Sale.objects.filter(
         business=biz, location__branch=branch
-    ).filter(Q(receipt_number__icontains=q) | Q(customer_name__icontains=q))[:6]
+    ).filter(DQ(receipt_number__icontains=q) | DQ(customer_name__icontains=q))[:limit]
     if receipts:
         groups.append({"label": "Receipts", "rows": [
             {"text": f"{s.receipt_number} — {s.customer_name or 'Walk-in'}",
@@ -213,7 +202,7 @@ def home_search(request):
     from accounts.views import MANAGER_CREATABLE_ROLES
     staff = User.objects.filter(
         business=biz, branch=branch, role__in=MANAGER_CREATABLE_ROLES
-    ).filter(Q(username__icontains=q) | Q(first_name__icontains=q) | Q(last_name__icontains=q))[:6]
+    ).filter(DQ(username__icontains=q) | DQ(first_name__icontains=q) | DQ(last_name__icontains=q))[:limit]
     if staff:
         groups.append({"label": "Staff", "rows": [
             {"text": f"{s.get_full_name() or s.username} — {s.get_role_display()}",
@@ -221,12 +210,43 @@ def home_search(request):
 
     if "PRODUCTION" in request.user.switchable_views():
         from production.models import RawMaterial
-        materials = RawMaterial.objects.filter(business=biz, name__icontains=q)[:6]
+        materials = RawMaterial.objects.filter(business=biz, name__icontains=q)[:limit]
         if materials:
             groups.append({"label": "Raw Materials", "rows": [
                 {"text": m.name, "href": reverse("production:raw_material_movements", args=[m.pk])} for m in materials]})
 
+    return groups
+
+
+@login_required
+@manager_required
+def home_search(request):
+    """GET /home/search/?q=... — the live dropdown under the search box as
+    you type. Small, capped result sets per group; empty query returns
+    nothing rather than a full listing."""
+    from django.http import HttpResponse
+    q = request.GET.get("q", "").strip()
+    if not q:
+        # Truly empty — not even whitespace — so .tui-search-results:empty
+        # in CSS actually hides the box. A template render here always
+        # leaves stray newlines behind, which defeats that selector and
+        # shows a blank floating panel the moment the field gets focus.
+        return HttpResponse("")
+    groups = _search_groups(request, q, limit=6)
     return render(request, "ternah_ui/_search_results.html", {"groups": groups, "q": q})
+
+
+@login_required
+@manager_required
+def home_search_page(request):
+    """GET /home/search-results/?q=... — pressing Enter or the search
+    button lands here instead of relying on the dropdown alone: a real,
+    persistent page listing everything found, clearly grouped by what it
+    is and where it lives, not a hover panel that vanishes on a stray
+    click."""
+    q = request.GET.get("q", "").strip()
+    groups = _search_groups(request, q, limit=50) if q else []
+    return render(request, "manager/search_results.html", {"groups": groups, "q": q})
 
 
 @login_required

@@ -9,11 +9,16 @@
 /* ---------- Search (used inline in a page-head, e.g. Manager Home) ---------- */
 .tui-search { flex: 1; max-width: 420px; position: relative; }
 .tui-search input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-input);
-                     padding: 10px var(--sp-4); font: var(--text-body); font-family: var(--font); color: var(--ink); }
+                     padding: 10px 44px 10px var(--sp-4); font: var(--text-body); font-family: var(--font); color: var(--ink); }
 .tui-search input:focus { outline: none; border-color: var(--border-hover); box-shadow: 0 0 0 3px rgba(21,32,46,.06); }
-.tui-search kbd { position: absolute; right: var(--sp-3); top: 50%; transform: translateY(-50%); color: var(--muted);
+.tui-search kbd { position: absolute; right: 44px; top: 50%; transform: translateY(-50%); color: var(--muted);
                    font-size: 12px; font-family: var(--font); border: 1px solid var(--border); border-radius: 5px;
                    padding: 1px 6px; background: var(--bg); pointer-events: none; }
+.tui-search-submit { position: absolute; right: 4px; top: 4px; bottom: 4px; width: 36px; border: 0; border-radius: 8px;
+                      background: var(--ink); color: var(--surface); display: flex; align-items: center; justify-content: center;
+                      cursor: pointer; }
+.tui-search-submit:hover { filter: brightness(1.15); }
+.tui-search-submit:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .tui-search-results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--surface);
                        border: 1px solid var(--border); border-radius: var(--r-input); box-shadow: 0 10px 30px rgba(21,32,46,.14);
                        max-height: 360px; overflow-y: auto; z-index: 30; }
