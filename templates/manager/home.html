@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Home{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'ternah-ui/shell.css' %}">{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <div class="tui-search" style="max-width:420px">
+    <input type="search" id="tui-search-input" placeholder="Search products, batches, customers or receipts"
+           aria-label="Search"
+           hx-get="{% url 'home_search' %}" hx-trigger="keyup changed delay:300ms, focus"
+           hx-target="#tui-search-results" hx-swap="innerHTML">
+    <kbd>/</kbd>
+    <div id="tui-search-results" class="tui-search-results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <span class="spacer"></span>
+  <span style="color:var(--muted);font-size:.9rem">{% now "l, j F" %}</span>
+</div>
+
+<h1 class="tui-greeting">Good {{ greeting_period }}, {{ request.user.first_name|default:request.user.get_role_display }}</h1>
+<p class="tui-greeting-sub">{{ factory_name }} · here is where the factory stands right now.</p>
+
+<div class="tui-grid">
+  {% for tile in tiles %}
+    {% include "ternah_ui/tile.html" %}
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+    var tag = (document.activeElement && document.activeElement.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    e.preventDefault();
+    document.getElementById("tui-search-input").focus();
+  });
+  document.addEventListener("click", function (e) {
+    var box = document.querySelector(".tui-search");
+    if (box && !box.contains(e.target)) document.getElementById("tui-search-results").innerHTML = "";
+  });
+</script>
+{% endblock %}

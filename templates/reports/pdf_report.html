@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+{% comment %}
+Rendered through xhtml2pdf, not the browser — deliberately standalone, no
+{% extends "base.html" %} and no app CSS: xhtml2pdf's renderer doesn't
+understand flexbox, CSS grid, or var() custom properties, so this stays
+plain HTML/CSS that its engine can actually lay out.
+{% endcomment %}
+<style>
+  @page { size: A4; margin: 2cm 1.5cm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #15202E; }
+  h1 { font-size: 16px; color: #15202E; margin: 0 0 2px; }
+  .sub { font-size: 9px; color: #5B6472; margin: 0 0 14px; }
+  table { width: 100%; margin-top: 8px; }
+  th { background: #15202E; color: #FFFFFF; text-align: left; padding: 5px 6px; font-size: 9px; }
+  td { padding: 4px 6px; border-bottom: 0.5px solid #E4E2DB; font-size: 9px; }
+  tr.total td { border-top: 1px solid #15202E; border-bottom: none; font-weight: bold; padding-top: 6px; }
+  .empty { color: #5B6472; padding: 10px 6px; }
+</style>
+</head>
+<body>
+  <h1>{{ business_name }} — {{ title }}</h1>
+  <p class="sub">{{ start }} to {{ end }} &middot; {{ scope }}</p>
+
+  <table>
+    <tr>{% for c in columns %}<th>{{ c }}</th>{% endfor %}</tr>
+    {% for row in rows %}
+    <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+    {% empty %}
+    <tr><td class="empty" colspan="{{ columns|length }}">No records in this period.</td></tr>
+    {% endfor %}
+  </table>
+
+  <table>
+    <tr class="total"><td>{{ total_label }}</td></tr>
+  </table>
+</body>
+</html>

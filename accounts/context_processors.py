@@ -8,6 +8,27 @@ def active_view(request):
     }
 
 
+def module_switcher(request):
+    """One-click cross-module switching from anywhere, not just Home —
+    reuses the exact same tile lists Home already builds (owner_tiles /
+    manager_tiles), so there's one source of truth for 'what can this
+    person open' and the switcher can never list something Home wouldn't.
+    Only Owner and Manager get one: each has several real modules to jump
+    between. A native Cashier/Sales Rep/Production login has exactly one
+    place to be, so there's nothing to switch to — the affordance would be
+    a dead button, not a shortcut."""
+    user = getattr(request, "user", None)
+    if not (user and user.is_authenticated) or user.is_superuser:
+        return {"switcher_items": []}
+    if user.role == "OWNER":
+        from accounts.views import owner_tiles
+        return {"switcher_items": owner_tiles()}
+    if user.role == "MANAGER":
+        from accounts.views import manager_tiles
+        return {"switcher_items": manager_tiles(user)}
+    return {"switcher_items": []}
+
+
 def notifications(request):
     """Badge counts shown in the nav / home tiles — cheap enough (small
     count queries, only for roles that can actually act on it) to compute on

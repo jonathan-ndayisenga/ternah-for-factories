@@ -16,6 +16,13 @@
     <button class="btn ghost" style="background:#EDF1F5;color:var(--ternah-navy)" type="submit">Filter</button>
     <button class="btn" type="button" onclick="window.print()">Print</button>
   </form>
+  <select class="switcher" style="background:#fff;border:1px solid #D7DEE6;color:var(--text)"
+          onchange="if (this.value) { window.location = this.value + window.location.search; this.selectedIndex = 0; }">
+    <option value="">Download PDF…</option>
+    <option value="{% url 'reports:export_report_pdf' 'sales' %}">Sales</option>
+    <option value="{% url 'reports:export_report_pdf' 'expenses' %}">Expenses</option>
+    <option value="{% url 'reports:export_report_pdf' 'debtors' %}">Debtors</option>
+  </select>
 </div>
 
 {% include "partials/print_letterhead.html" with print_title=print_title %}

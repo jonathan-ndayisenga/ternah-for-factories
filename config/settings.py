@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Ternah for Factories
+    "ternah_ui",       # shared design tokens, fonts, sidebar/tile partials — versioned, imported by every Ternah product
     "platformadmin",   # software owner: tenants, subscriptions, tokens, billing lifecycle
     "accounts",        # users, roles, branch attachment, view switcher
     "core",            # Branch + shared bases
@@ -71,6 +72,7 @@ TEMPLATES = [{
         "django.contrib.messages.context_processors.messages",
         "accounts.context_processors.active_view",
         "accounts.context_processors.notifications",
+        "accounts.context_processors.module_switcher",
     ]},
 }]
 

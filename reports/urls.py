@@ -5,6 +5,7 @@ app_name = "reports"
 urlpatterns = [
     path("", views.owner_dashboard, name="owner_dashboard"),
     path("print/", views.print_reports, name="print_reports"),
+    path("print/export/<str:kind>/", views.export_report_pdf, name="export_report_pdf"),
     path("production/", views.production_report, name="production_report"),
     path("production/<int:pk>/", views.production_batch_detail, name="production_batch_detail"),
     path("debtors/", views.debtors_report, name="debtors_report"),

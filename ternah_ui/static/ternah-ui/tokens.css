@@ -1,0 +1,67 @@
+/* ternah-ui v1.0.0 — shared design tokens, self-hosted type, tile component.
+   Imported by every Ternah product; a fix is made once, here. Do not copy
+   these values into a product-local stylesheet — import this file instead. */
+
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/HankenGrotesk-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/HankenGrotesk-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/HankenGrotesk-latin.woff2') format('woff2');
+}
+
+:root {
+  /* Colour */
+  --bg: #F4F3EF;
+  --surface: #FFFFFF;
+  --border: #E4E2DB;
+  --border-hover: #D2CFC6;
+  --ink: #15202E;
+  --muted: #5B6472;
+  --nav: #14233A;
+  --nav-active: #22385A;
+  --nav-text: #C9D2DE;
+  --icon-bg: #EEF1F6;
+  --warn: #8A4A0E;
+  --warn-bg: #FBF0E2;
+
+  /* Type */
+  --font: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --text-greeting: 600 36px/1.2 var(--font);
+  --text-tile-number-lg: 600 44px/1.1 var(--font);
+  --text-tile-number-sm: 600 36px/1.1 var(--font);
+  --text-tile-title: 600 17px/1.3 var(--font);
+  --text-body: 400 15px/1.5 var(--font);
+  --text-pill: 500 14px/1 var(--font);
+
+  /* Spacing (4px base) */
+  --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;
+  --sp-7: 28px; --sp-10: 40px; --sp-12: 48px;
+
+  /* Radii */
+  --r-tile: 20px;
+  --r-input: 12px;
+  --r-pill: 999px;
+
+  /* Layout */
+  --tui-nav-w: 256px;
+  --tui-header-h: 72px;
+}
+
+/* No dark mode in this app yet — deliberately not following
+   prefers-color-scheme, so the off-white theme always renders regardless
+   of the visitor's system/browser setting. Revisit if a real toggle ships. */

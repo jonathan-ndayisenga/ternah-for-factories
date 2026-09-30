@@ -7,12 +7,16 @@ sales/expenses/debtors -> location -> branch.
 """
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
+
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.template.loader import render_to_string
 from django.utils import timezone
+from xhtml2pdf import pisa
 
 from production.models import Dispensation, Distribution, DistributionLine, Product, ProductionBatch, RawMaterial, RawMaterialPurchase
 from sales.models import (
@@ -195,6 +199,70 @@ def print_reports(request):
         "expenses_total": expenses.aggregate(s=Sum("amount"))["s"] or 0,
         "print_title": f"Report — {start} to {end} · {scope}",
     })
+
+
+@login_required
+def export_report_pdf(request, kind):
+    """One category at a time, as an actual downloaded file — print_reports
+    above is the on-screen/browser-print version of the same three
+    sections; this renders a plain, standalone HTML doc (no app CSS —
+    xhtml2pdf doesn't understand flexbox/grid/CSS variables) through
+    xhtml2pdf rather than the browser, so 'Download PDF' doesn't depend on
+    whatever print driver happens to be on the till."""
+    if kind not in ("sales", "expenses", "debtors"):
+        raise Http404
+    biz, today = _biz(request), timezone.localdate()
+    start = request.GET.get("start") or today.replace(day=1).isoformat()
+    end = request.GET.get("end") or today.isoformat()
+    scope = "One branch" if request.GET.get("branch") else "All branches"
+
+    if kind == "sales":
+        qs = _branch_filter(request, Sale.objects.filter(
+            business=biz, created_at__date__gte=start, created_at__date__lte=end
+        ).select_related("location__branch").prefetch_related("items__product")).order_by("-created_at")
+        title = "Sales"
+        columns = ["Date", "Receipt", "Customer", "Items", "Branch", "Method", "Total (UGX)", "Balance (UGX)"]
+        rows = [[
+            s.created_at.strftime("%d %b %Y"),
+            s.receipt_number + (" (Reversed)" if s.is_reversed else ""),
+            s.customer_name or "—",
+            ", ".join(f"{i.product.name} x{i.quantity}" for i in s.items.all()),
+            s.location.branch.name,
+            s.get_payment_method_display(),
+            f"{s.total:,.0f}",
+            f"{s.balance:,.0f}",
+        ] for s in qs]
+        total_label = f"Total: UGX {(qs.exclude(is_reversed=True).aggregate(s=Sum('total'))['s'] or 0):,.0f}"
+    elif kind == "expenses":
+        qs = _branch_filter(request, Expense.objects.filter(
+            business=biz, date__gte=start, date__lte=end
+        ).select_related("location__branch")).order_by("-date")
+        title = "Expenses"
+        columns = ["Date", "Branch", "Category", "Note", "Amount (UGX)"]
+        rows = [[
+            e.date.strftime("%d %b %Y"), e.location.branch.name, e.category, e.note or "—", f"{e.amount:,.0f}",
+        ] for e in qs]
+        total_label = f"Total: UGX {(qs.aggregate(s=Sum('amount'))['s'] or 0):,.0f}"
+    else:
+        debtors = [(d, d.balance()) for d in _branch_filter(
+            request, Debtor.objects.filter(business=biz).select_related("location__branch"))]
+        debtors = [(d, bal) for d, bal in debtors if bal > 0]
+        title = "Outstanding Debtors"
+        columns = ["Name", "Phone", "Branch", "Balance (UGX)"]
+        rows = [[d.name, d.phone or "—", d.location.branch.name, f"{bal:,.0f}"] for d, bal in debtors]
+        total_label = f"Total outstanding: UGX {sum(bal for _, bal in debtors):,.0f}"
+
+    html = render_to_string("reports/pdf_report.html", {
+        "business_name": biz.name, "title": title, "start": start, "end": end, "scope": scope,
+        "columns": columns, "rows": rows, "total_label": total_label,
+    })
+    buffer = BytesIO()
+    result = pisa.CreatePDF(html, dest=buffer)
+    if result.err:
+        return HttpResponse("Could not generate the PDF.", status=500)
+    response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{kind}-{start}-to-{end}.pdf"'
+    return response
 
 
 @login_required

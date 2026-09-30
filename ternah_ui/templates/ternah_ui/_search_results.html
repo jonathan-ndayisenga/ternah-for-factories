@@ -1,0 +1,10 @@
+{% if q and not groups %}
+<div class="tui-search-empty">No matches for "{{ q }}"</div>
+{% else %}
+{% for group in groups %}
+<div class="tui-search-group-label">{{ group.label }}</div>
+{% for row in group.rows %}
+<a class="tui-search-row" href="{{ row.href }}" role="option">{{ row.text }}</a>
+{% endfor %}
+{% endfor %}
+{% endif %}

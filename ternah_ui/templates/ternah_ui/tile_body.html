@@ -1,0 +1,25 @@
+{% comment %}
+The part of a tile that actually changes on a 30s refresh: icon colour,
+title, and the stat numbers. Actions (pills) stay outside this fragment
+in tile.html since they never change. Rendered both on first page load
+and by the /home/tiles/<tile>/ HTMX fragment — same markup either way.
+{% endcomment %}
+<div class="tui-tile-head">
+  <span class="tui-tile-icon{% if tile.warn %} tui-icon-warn{% endif %}" aria-hidden="true">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round">{{ tile.icon|safe }}</svg>
+  </span>
+  <a class="tui-tile-title" href="{{ tile.href }}">{{ tile.title }}</a>
+</div>
+{% if tile.empty_text %}
+<div class="tui-tile-empty">{{ tile.empty_text }}</div>
+{% else %}
+<div class="tui-tile-stats">
+  {% for s in tile.stats %}
+  <div class="tui-tile-stat"{% if s.warn %} aria-label="{{ s.warn_label }}"{% endif %}>
+    <span class="tui-tile-number{% if s.warn %} tui-num-warn{% endif %}">{{ s.number }}</span>
+    <span class="tui-tile-label">{{ s.unit_label }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

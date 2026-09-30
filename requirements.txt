@@ -1,6 +1,7 @@
 Django>=5.0
 python-dotenv>=1.0
 whitenoise>=6.6
+xhtml2pdf>=0.2.21   # server-side PDF export (Reports page) — pure Python, no system libs to install on the droplet
 
 # Production only — dev uses SQLite + runserver and never imports these,
 # but installing them locally too keeps `pip install -r requirements.txt` simple.
