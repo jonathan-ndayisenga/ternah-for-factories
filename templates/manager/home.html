@@ -39,5 +39,36 @@
     var box = document.querySelector(".tui-search");
     if (box && !box.contains(e.target)) document.getElementById("tui-search-results").innerHTML = "";
   });
+
+  // Arrow keys move through results, Enter follows the highlighted one,
+  // Escape closes — the input stays focused throughout, same as a normal
+  // address-bar-style search.
+  (function () {
+    var input = document.getElementById("tui-search-input");
+    var results = document.getElementById("tui-search-results");
+    var active = -1;
+
+    function rows() { return results.querySelectorAll(".tui-search-row"); }
+    function setActive(i) {
+      var list = rows();
+      if (!list.length) return;
+      active = (i + list.length) % list.length;
+      list.forEach(function (row, idx) { row.classList.toggle("is-active", idx === active); });
+      list[active].scrollIntoView({ block: "nearest" });
+    }
+
+    input.addEventListener("keydown", function (e) {
+      var list = rows();
+      if (e.key === "ArrowDown" && list.length) { e.preventDefault(); setActive(active + 1); }
+      else if (e.key === "ArrowUp" && list.length) { e.preventDefault(); setActive(active - 1); }
+      else if (e.key === "Enter" && active >= 0 && list[active]) { e.preventDefault(); list[active].click(); }
+      else if (e.key === "Escape") { results.innerHTML = ""; input.blur(); }
+    });
+
+    // Reset the highlighted row whenever the result set changes (htmx swap).
+    document.body.addEventListener("htmx:afterSwap", function (e) {
+      if (e.target && e.target.id === "tui-search-results") active = -1;
+    });
+  })();
 </script>
 {% endblock %}

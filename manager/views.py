@@ -165,34 +165,66 @@ def home_search(request):
     """GET /home/search/?q=... — products, batches, customers (debtors) and
     receipts, this tenant only. Small, capped result sets per group; empty
     query returns nothing rather than a full listing."""
+    from django.db.models import Q
+    from django.http import HttpResponse
     from django.urls import reverse
     q = request.GET.get("q", "").strip()
     if not q:
-        return render(request, "ternah_ui/_search_results.html", {"groups": [], "q": q})
+        # Truly empty — not even whitespace — so .tui-search-results:empty
+        # in CSS actually hides the box. A template render here always
+        # leaves stray newlines behind, which defeats that selector and
+        # shows a blank floating panel the moment the field gets focus.
+        return HttpResponse("")
 
-    biz = request.user.business
+    biz, branch = request.user.business, request.user.branch
     groups = []
 
-    products = Product.objects.filter(business=biz, name__icontains=q)[:5]
+    # Catalog — shared business-wide, not branch-specific.
+    products = Product.objects.filter(business=biz, name__icontains=q)[:6]
     if products:
         groups.append({"label": "Products", "rows": [
             {"text": p.name, "href": reverse("production:formula_edit", args=[p.pk])} for p in products]})
 
+    # Everything below is scoped to this manager's own branch — a search
+    # box is still an access boundary, not just a filter.
     from production.models import ProductionBatch
-    batches = ProductionBatch.objects.filter(business=biz, batch_number__icontains=q)[:5]
+    batches = ProductionBatch.objects.filter(business=biz, branch=branch, batch_number__icontains=q)[:6]
     if batches:
         groups.append({"label": "Batches", "rows": [
             {"text": b.batch_number, "href": reverse("reports:production_batch_detail", args=[b.pk])} for b in batches]})
 
-    customers = Debtor.objects.filter(business=biz, name__icontains=q)[:5]
+    customers = Debtor.objects.filter(
+        business=biz, location__branch=branch
+    ).filter(Q(name__icontains=q) | Q(phone__icontains=q))[:6]
     if customers:
         groups.append({"label": "Customers", "rows": [
-            {"text": d.name, "href": reverse("manager:debtor_detail", args=[d.pk])} for d in customers]})
+            {"text": f"{d.name}{' — ' + d.phone if d.phone else ''}",
+             "href": reverse("manager:debtor_detail", args=[d.pk])} for d in customers]})
 
-    receipts = Sale.objects.filter(business=biz, receipt_number__icontains=q)[:5]
+    receipts = Sale.objects.filter(
+        business=biz, location__branch=branch
+    ).filter(Q(receipt_number__icontains=q) | Q(customer_name__icontains=q))[:6]
     if receipts:
         groups.append({"label": "Receipts", "rows": [
-            {"text": s.receipt_number, "href": reverse("sales:receipt", args=[s.pk])} for s in receipts]})
+            {"text": f"{s.receipt_number} — {s.customer_name or 'Walk-in'}",
+             "href": reverse("sales:receipt", args=[s.pk])} for s in receipts]})
+
+    from accounts.models import User
+    from accounts.views import MANAGER_CREATABLE_ROLES
+    staff = User.objects.filter(
+        business=biz, branch=branch, role__in=MANAGER_CREATABLE_ROLES
+    ).filter(Q(username__icontains=q) | Q(first_name__icontains=q) | Q(last_name__icontains=q))[:6]
+    if staff:
+        groups.append({"label": "Staff", "rows": [
+            {"text": f"{s.get_full_name() or s.username} — {s.get_role_display()}",
+             "href": reverse("user_edit", args=[s.pk])} for s in staff]})
+
+    if "PRODUCTION" in request.user.switchable_views():
+        from production.models import RawMaterial
+        materials = RawMaterial.objects.filter(business=biz, name__icontains=q)[:6]
+        if materials:
+            groups.append({"label": "Raw Materials", "rows": [
+                {"text": m.name, "href": reverse("production:raw_material_movements", args=[m.pk])} for m in materials]})
 
     return render(request, "ternah_ui/_search_results.html", {"groups": groups, "q": q})
 

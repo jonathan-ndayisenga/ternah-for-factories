@@ -21,7 +21,7 @@
 .tui-search-group-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px;
                            color: var(--muted); padding: var(--sp-3) var(--sp-4) 4px; }
 .tui-search-row { display: block; padding: var(--sp-2) var(--sp-4); text-decoration: none; color: var(--ink); font-size: 14px; }
-.tui-search-row:hover, .tui-search-row:focus-visible { background: var(--bg); }
+.tui-search-row:hover, .tui-search-row:focus-visible, .tui-search-row.is-active { background: var(--bg); }
 .tui-search-empty { padding: var(--sp-4); color: var(--muted); font-size: 14px; }
 
 /* ---------- Greeting ---------- */
