@@ -122,8 +122,15 @@ if not DEBUG:
     # via X-Forwarded-Proto — required for Django to know the original request was HTTPS.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", True)
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    # Default True (only send these cookies over HTTPS) — same override
+    # pattern as SECURE_SSL_REDIRECT above. A droplet still running HTTP-only
+    # (no domain/Certbot yet) needs both set to 0, or the browser silently
+    # refuses to send the CSRF cookie back and every login 403s with "CSRF
+    # verification failed" — nothing wrong with the login itself, just a
+    # secure-cookie flag with no HTTPS to require. Flip back to the default
+    # (remove the env vars, or set to 1) once HTTPS is live.
+    SESSION_COOKIE_SECURE = env_bool("DJANGO_SESSION_COOKIE_SECURE", True)
+    CSRF_COOKIE_SECURE = env_bool("DJANGO_CSRF_COOKIE_SECURE", True)
     SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_HSTS_SECONDS", "0"))  # raise once HTTPS is confirmed working
     SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
     SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
